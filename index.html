@@ -1,0 +1,2511 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="6-Min Tagebuch">
+  <meta name="theme-color" content="#1A1A2E">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%231A1A2E'/><text x='50' y='65' font-size='50' text-anchor='middle' fill='%23E8B86D'>6</text></svg>">
+  <title>6-Minuten-Tagebuch</title>
+  <style>
+    :root {
+      --bg: #FAFAFA;
+      --bg-alt: #F3F4F6;
+      --text: #1A1D26;
+      --text-secondary: #6B7280;
+      --card: #FFFFFF;
+      --border: #E5E7EB;
+      --accent: #1A1A2E;
+      --accent-light: #E8B86D;
+      --success: #16a34a;
+      --shadow: rgba(0, 0, 0, 0.08);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #0F0F1A;
+        --bg-alt: #1A1A2E;
+        --text: #F0F0F5;
+        --text-secondary: #9CA3AF;
+        --card: #1E1E35;
+        --border: #2A2A45;
+        --accent: #E8B86D;
+        --accent-light: #E8B86D;
+        --success: #22c55e;
+        --shadow: rgba(0, 0, 0, 0.3);
+      }
+    }
+
+    [data-theme="dark"] {
+      --bg: #0F0F1A;
+      --bg-alt: #1A1A2E;
+      --text: #F0F0F5;
+      --text-secondary: #9CA3AF;
+      --card: #1E1E35;
+      --border: #2A2A45;
+      --accent: #E8B86D;
+      --accent-light: #E8B86D;
+      --success: #22c55e;
+      --shadow: rgba(0, 0, 0, 0.3);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    #app {
+      width: 100%;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Main Container */
+    .screen-container {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .screen-content {
+      flex: 1;
+      padding: 0;
+      padding-bottom: max(20px, env(safe-area-inset-bottom));
+    }
+
+    /* Bottom Tab Bar */
+    .tab-bar {
+      display: flex;
+      gap: 0;
+      background: var(--card);
+      border-top: 1px solid var(--border);
+      padding-bottom: max(8px, env(safe-area-inset-bottom));
+      padding-top: 8px;
+      position: relative;
+      z-index: 100;
+    }
+
+    .tab {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      padding: 8px 0;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-size: 20px;
+      color: var(--text-secondary);
+      text-decoration: none;
+    }
+
+    .tab.active {
+      color: var(--accent);
+    }
+
+    .tab-label {
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: -0.3px;
+    }
+
+    /* Screens */
+    .screen {
+      display: none;
+    }
+
+    .screen.active {
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Auth / Login Screen */
+    .auth-screen {
+      padding: 40px 20px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 24px;
+      text-align: center;
+      min-height: 100vh;
+    }
+
+    .auth-logo {
+      font-size: 64px;
+      margin-bottom: 8px;
+    }
+
+    .auth-title {
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    .auth-subtitle {
+      font-size: 16px;
+      color: #6B7280;
+      margin-bottom: 8px;
+    }
+
+    .auth-form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 100%;
+      max-width: 340px;
+    }
+
+    .auth-divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: #9CA3AF;
+      font-size: 13px;
+      margin: 4px 0;
+    }
+
+    .auth-divider::before,
+    .auth-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #E5E7EB;
+    }
+
+    .btn-google {
+      background: #FFFFFF;
+      color: #1A1D26;
+      border: 1px solid #E5E7EB;
+      gap: 8px;
+      font-weight: 500;
+    }
+
+    .btn-google:active {
+      background: #F5F5F5;
+    }
+
+    .btn-google svg {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+
+    .auth-toggle {
+      font-size: 14px;
+      color: #6B7280;
+      cursor: pointer;
+    }
+
+    .auth-toggle span {
+      color: #1A1A2E;
+      font-weight: 600;
+      text-decoration: underline;
+    }
+
+    .auth-demo-link {
+      font-size: 13px;
+      color: #9CA3AF;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+
+    .auth-demo-link:hover {
+      color: #6B7280;
+    }
+
+    .auth-error {
+      background: #FEF2F2;
+      color: #DC2626;
+      font-size: 14px;
+      padding: 10px 16px;
+      border-radius: 8px;
+      text-align: left;
+    }
+
+    .auth-loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-size: 18px;
+      color: #6B7280;
+    }
+
+    /* Legacy Setup Screen (kept for Supabase config) */
+    .setup-screen {
+      padding: 40px 20px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 32px;
+      text-align: center;
+    }
+
+    .setup-logo {
+      font-size: 64px;
+      margin-bottom: 16px;
+    }
+
+    .setup-title {
+      font-size: 32px;
+      font-weight: 700;
+      color: #1A1A2E;
+      margin-bottom: 8px;
+    }
+
+    .setup-subtitle {
+      font-size: 16px;
+      color: #6B7280;
+      margin-bottom: 24px;
+    }
+
+    .setup-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      width: 100%;
+      max-width: 300px;
+    }
+
+    /* Buttons */
+    .btn {
+      padding: 16px 24px;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: inherit;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #FFFFFF;
+    }
+
+    .btn-primary:active {
+      background: #0D0D15;
+      transform: scale(0.98);
+    }
+
+    .btn-secondary {
+      background: #FFFFFF;
+      color: #1A1A2E;
+      border: 2px solid #1A1A2E;
+    }
+
+    .btn-secondary:active {
+      background: #F5F5F5;
+    }
+
+    .btn-small {
+      padding: 12px 16px;
+      font-size: 14px;
+      min-height: 40px;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 2px 8px var(--shadow);
+    }
+
+    /* Inputs */
+    .input-field {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 16px;
+      font-family: inherit;
+      color: var(--text);
+      background: var(--card);
+      transition: border-color 0.2s ease;
+    }
+
+    .input-field:focus {
+      outline: none;
+      border-color: #E8B86D;
+      box-shadow: 0 0 0 3px rgba(232, 184, 109, 0.1);
+    }
+
+    textarea.input-field {
+      resize: vertical;
+      min-height: 60px;
+      font-family: inherit;
+      -webkit-user-select: text;
+      user-select: text;
+    }
+
+    /* Onboarding */
+    .onboarding-screen {
+      padding: 60px 20px 40px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      text-align: center;
+      gap: 32px;
+    }
+
+    .onboarding-icon {
+      font-size: 80px;
+    }
+
+    .onboarding-title {
+      font-size: 28px;
+      font-weight: 700;
+      color: #1A1A2E;
+    }
+
+    .onboarding-text {
+      font-size: 16px;
+      color: #6B7280;
+      line-height: 1.6;
+    }
+
+    .onboarding-dots {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      margin-top: 24px;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #E5E7EB;
+      transition: all 0.3s ease;
+    }
+
+    .dot.active {
+      background: #E8B86D;
+      width: 24px;
+      border-radius: 4px;
+    }
+
+    /* Dashboard */
+    .dashboard-screen {
+      padding: 20px;
+      padding-top: 24px;
+      padding-bottom: 100px;
+      display: flex !important;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .quote-card {
+      background: #1A1A2E;
+      color: #FFFFFF;
+      border-radius: 16px;
+      padding: 24px;
+      text-align: center;
+      font-size: 18px;
+      font-weight: 500;
+      line-height: 1.6;
+      min-height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .streak-container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--card);
+      padding: 16px 20px;
+      border-radius: 16px;
+      box-shadow: 0 2px 8px var(--shadow);
+    }
+
+    .streak-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .streak-number {
+      font-size: 24px;
+      font-weight: 700;
+      color: #1A1A2E;
+    }
+
+    .streak-label {
+      font-size: 12px;
+      color: #6B7280;
+    }
+
+    .streak-freeze {
+      font-size: 12px;
+      background: #FEF3C7;
+      color: #92400E;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-weight: 600;
+    }
+
+    .status-dots {
+      display: flex;
+      gap: 12px;
+    }
+
+    .status-dot {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      background: #F3F4F6;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-direction: column;
+    }
+
+    .status-dot.done {
+      background: #16a34a;
+      color: #FFFFFF;
+    }
+
+    .status-dot.pending {
+      background: #FEF3C7;
+      color: #92400E;
+    }
+
+    .status-time {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: -0.3px;
+    }
+
+    .main-action-btn {
+      padding: 20px;
+      font-size: 18px;
+      font-weight: 700;
+      min-height: 60px;
+      margin: 20px 0;
+      box-shadow: 0 4px 12px rgba(26, 26, 46, 0.2);
+    }
+
+    .main-action-btn:active {
+      box-shadow: 0 2px 6px rgba(26, 26, 46, 0.1);
+    }
+
+    .habits-widget {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 2px 8px var(--shadow);
+    }
+
+    .habits-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #1A1A2E;
+      margin-bottom: 12px;
+    }
+
+    .habits-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .habit-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid #F3F4F6;
+    }
+
+    .habit-item:last-child {
+      border-bottom: none;
+    }
+
+    .habit-checkbox {
+      width: 24px;
+      height: 24px;
+      border: 2px solid #E5E7EB;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+      flex-shrink: 0;
+    }
+
+    .habit-checkbox.checked {
+      background: #16a34a;
+      border-color: #16a34a;
+      color: #FFFFFF;
+      font-size: 14px;
+    }
+
+    .habit-name {
+      font-size: 14px;
+      color: #1A1D26;
+      flex: 1;
+    }
+
+    /* Journal Entry */
+    .journal-screen {
+      padding: 20px;
+      padding-bottom: 100px;
+      display: flex !important;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .journal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-top: 4px;
+    }
+
+    .journal-title {
+      font-size: 24px;
+      font-weight: 700;
+      color: #1A1A2E;
+    }
+
+    .journal-close {
+      font-size: 20px;
+      cursor: pointer;
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .journal-progress {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+    }
+
+    .progress-bar {
+      flex: 1;
+      height: 4px;
+      background: #E5E7EB;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .progress-bar.active {
+      background: #1A1A2E;
+    }
+
+    .question-section {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .question-label {
+      font-size: 16px;
+      font-weight: 600;
+      color: #1A1A2E;
+    }
+
+    .question-inputs {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .journal-footer {
+      display: flex;
+      gap: 12px;
+      margin-top: 32px;
+      padding-top: 20px;
+      border-top: 1px solid #E5E7EB;
+    }
+
+    .journal-footer .btn {
+      flex: 1;
+    }
+
+    .skip-btn {
+      background: #F3F4F6;
+      color: #6B7280;
+    }
+
+    .skip-btn:active {
+      background: #E5E7EB;
+    }
+
+    /* Archive/Calendar */
+    .archive-screen {
+      padding: 20px;
+      padding-bottom: 100px;
+      display: flex !important;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .calendar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .calendar-month {
+      font-size: 20px;
+      font-weight: 700;
+      color: #1A1A2E;
+    }
+
+    .calendar-nav {
+      display: flex;
+      gap: 8px;
+    }
+
+    .calendar-nav button {
+      width: 44px;
+      height: 44px;
+      border: none;
+      background: #F3F4F6;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: all 0.2s ease;
+    }
+
+    .calendar-nav button:active {
+      background: #E5E7EB;
+    }
+
+    .weekdays {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .weekday {
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: #6B7280;
+      padding: 8px 0;
+    }
+
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 8px;
+    }
+
+    .calendar-day {
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+      background: var(--bg-alt);
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      position: relative;
+      color: var(--text-secondary);
+      min-height: 44px;
+      min-width: 44px;
+    }
+
+    .calendar-day.other-month {
+      opacity: 0.3;
+    }
+
+    .calendar-day.has-entry {
+      background: transparent;
+    }
+
+    .calendar-day.has-entry::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      background: #E8B86D;
+      border-radius: 50%;
+      position: absolute;
+    }
+
+    .calendar-day.today {
+      background: #1A1A2E;
+      color: #FFFFFF;
+      font-weight: 600;
+    }
+
+    .calendar-day.today.has-entry::before {
+      background: #16a34a;
+    }
+
+    .calendar-day:active {
+      transform: scale(0.95);
+    }
+
+    .entry-detail {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 2px 8px var(--shadow);
+      margin-top: 12px;
+    }
+
+    .entry-section-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #1A1A2E;
+      margin-top: 16px;
+      margin-bottom: 8px;
+    }
+
+    .entry-section-title:first-child {
+      margin-top: 0;
+    }
+
+    .entry-text {
+      font-size: 14px;
+      color: #6B7280;
+      line-height: 1.6;
+      padding: 8px 0;
+    }
+
+    /* Settings */
+    .settings-screen {
+      padding: 20px;
+      padding-bottom: 100px;
+      display: flex !important;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .settings-section {
+      margin-bottom: 24px;
+    }
+
+    .settings-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #6B7280;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+
+    .settings-item {
+      background: var(--card);
+      padding: 16px;
+      border-radius: 12px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .settings-label {
+      font-size: 14px;
+      font-weight: 500;
+      color: #1A1D26;
+    }
+
+    .settings-value {
+      font-size: 12px;
+      color: #6B7280;
+      text-align: right;
+    }
+
+    /* Toast */
+    .toast-container {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+      max-width: 300px;
+    }
+
+    .toast {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 16px 20px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      animation: slideIn 0.3s ease;
+      color: var(--text);
+    }
+
+    .toast.success {
+      background: #16a34a;
+      color: #FFFFFF;
+    }
+
+    .toast.error {
+      background: #dc2626;
+      color: #FFFFFF;
+    }
+
+    .toast.info {
+      background: #3b82f6;
+      color: #FFFFFF;
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    /* Supabase Setup Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: none;
+      z-index: 500;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal {
+      background: #FFFFFF;
+      border-radius: 20px;
+      padding: 32px 24px;
+      max-width: 400px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .modal-title {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      color: #1A1A2E;
+    }
+
+    .modal-text {
+      font-size: 14px;
+      color: #6B7280;
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+
+    .modal-inputs {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .modal-buttons {
+      display: flex;
+      gap: 12px;
+    }
+
+    .modal-buttons .btn {
+      flex: 1;
+    }
+
+    /* Responsive */
+    @media (min-width: 768px) {
+      html, body {
+        max-width: 500px;
+        margin: 0 auto;
+        height: 100vh;
+      }
+
+      #app {
+        max-width: 500px;
+        margin: 0 auto;
+      }
+    }
+
+    /* Weekly Reflection */
+    .reflection-screen {
+      padding: 20px;
+      padding-bottom: 100px;
+      display: flex !important;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .reflection-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .reflection-title {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--text, #1A1A2E);
+    }
+
+    .reflection-week {
+      font-size: 13px;
+      color: #6B7280;
+    }
+
+    .reflection-question {
+      background: var(--card, #FFFFFF);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .reflection-label {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text, #1A1A2E);
+      margin-bottom: 12px;
+    }
+
+    .reflection-rating {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .rating-btn {
+      width: 44px;
+      height: 44px;
+      border: 2px solid #E5E7EB;
+      border-radius: 12px;
+      background: transparent;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: inherit;
+    }
+
+    .rating-btn.selected {
+      background: #1A1A2E;
+      color: #FFFFFF;
+      border-color: #1A1A2E;
+    }
+
+    /* Confetti */
+    .confetti {
+      position: fixed;
+      width: 10px;
+      height: 10px;
+      pointer-events: none;
+      animation: confetti-fall 3s ease-in forwards;
+    }
+
+    @keyframes confetti-fall {
+      to {
+        transform: translateY(100vh) rotate(360deg);
+        opacity: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <script type="module">
+    import { h, render, Component, Fragment } from 'https://esm.sh/preact@10.19.3';
+    import htm from 'https://esm.sh/htm@3.1.1';
+
+    const html = htm.bind(h);
+
+    // ============================================================================
+    // THEME MANAGEMENT
+    // ============================================================================
+
+    let currentTheme = 'auto'; // 'auto' | 'light' | 'dark'
+
+    function setTheme(theme) {
+      currentTheme = theme;
+      if (theme === 'auto') {
+        document.documentElement.removeAttribute('data-theme');
+      } else {
+        document.documentElement.setAttribute('data-theme', theme);
+      }
+      if (app) app.render();
+    }
+
+    // ============================================================================
+    // CONSTANTS & CONFIG
+    // ============================================================================
+
+    const QUOTES = [
+      "Dankbarkeit ist die Tugend, die das Glück vergrößert.",
+      "Jeder Tag ist eine neue Chance, dein Leben zu verbessern.",
+      "Die beste Zeit zum Nachdenken ist am Morgen, die beste Zeit zu träumen am Abend.",
+      "Kleine Dinge sind es, aus denen das größte Glück besteht.",
+      "Wer dankbar ist, lebt glücklicher.",
+      "Der Morgentau ist das beste aller Geschenke.",
+      "Achtsamkeit ist der Weg zu wahrer Freiheit.",
+      "Dein Leben ist das Ergebnis deiner Gedanken.",
+      "Jeden Morgen bietet sich die Gelegenheit, wieder von vorne zu beginnen.",
+      "Glück ist kein Ziel, sondern ein Gefühl auf dem Weg.",
+      "Die Gegenwart ist das einzige, das wir je wirklich haben.",
+      "Dankbarkeit wandelt das Gewöhnliche ins Außergewöhnliche.",
+      "Wer in der Vergangenheit lebt, verliert die Zukunft.",
+      "Jeder Moment ist kostbar und einzigartig.",
+      "Selbstmitleid ist der größte Feind des Glücks.",
+      "Die Kraft liegt in dir selbst verborgen.",
+      "Liebe ist die Quelle aller Veränderung.",
+      "Wer mit sich selbst Frieden schließt, findet Ruhe in der Welt.",
+      "Das Leben belohnt diejenigen, die es mit Absicht leben.",
+      "Schönheit findet sich überall, wenn man sie sucht.",
+      "Jeder Atemzug ist ein Geschenk.",
+      "Wir sind nicht Gefangene unserer Vergangenheit.",
+      "Echte Stärke liegt in der Verletzlichkeit.",
+      "Gib dich selbst treu, das ist das Wichtigste.",
+      "Das Unmögliche wird möglich durch Ausdauer.",
+      "Dein Fokus ist deine Kraft.",
+      "Die wahre Größe liegt in der Bescheidenheit.",
+      "Jeder Tag ohne Lachen ist ein verlorener Tag.",
+      "Veränderung beginnt in dir selbst.",
+      "Vertraue auf deine innere Weisheit."
+    ];
+
+    const MILESTONES = [7, 14, 30, 60, 100, 365];
+
+    const DEMO_DATA = {
+      entries: {},
+      habits: [
+        { id: 1, name: 'Meditation', createdAt: Date.now() },
+        { id: 2, name: 'Bewegung', createdAt: Date.now() },
+        { id: 3, name: 'Lesen', createdAt: Date.now() }
+      ],
+      habitTracks: {},
+      weeklyReflections: {},
+      freezesRemaining: 2,
+      frozenDates: {}
+    };
+
+    // ============================================================================
+    // DATA SERVICE
+    // ============================================================================
+
+    class DataService {
+      constructor(isDemo = true) {
+        this.isDemo = isDemo;
+        this.supabaseClient = null;
+        this.userId = null;
+        this.user = null;
+      }
+
+      // ---- Auth Methods ----
+
+      static async createWithSupabase(url, key) {
+        const ds = new DataService(false);
+        try {
+          const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2.45.0');
+          ds.supabaseClient = createClient(url, key, {
+            auth: {
+              autoRefreshToken: true,
+              persistSession: true,
+              detectSessionInUrl: true
+            }
+          });
+          return ds;
+        } catch (e) {
+          console.error('Supabase init failed:', e);
+          return null;
+        }
+      }
+
+      onAuthStateChange(callback) {
+        if (!this.supabaseClient) return () => {};
+        const { data: { subscription } } = this.supabaseClient.auth.onAuthStateChange((event, session) => {
+          if (session?.user) {
+            this.user = session.user;
+            this.userId = session.user.id;
+          } else {
+            this.user = null;
+            this.userId = null;
+          }
+          callback(event, session);
+        });
+        return () => subscription?.unsubscribe();
+      }
+
+      async getSession() {
+        if (!this.supabaseClient) return null;
+        const { data: { session } } = await this.supabaseClient.auth.getSession();
+        if (session?.user) {
+          this.user = session.user;
+          this.userId = session.user.id;
+        }
+        return session;
+      }
+
+      async signInWithGoogle() {
+        if (!this.supabaseClient) return { error: 'Kein Supabase' };
+        const { data, error } = await this.supabaseClient.auth.signInWithOAuth({
+          provider: 'google',
+          options: { redirectTo: window.location.origin + window.location.pathname }
+        });
+        return { data, error };
+      }
+
+      async signInWithEmail(email, password) {
+        if (!this.supabaseClient) return { error: 'Kein Supabase' };
+        const { data, error } = await this.supabaseClient.auth.signInWithPassword({ email, password });
+        if (data?.user) {
+          this.user = data.user;
+          this.userId = data.user.id;
+        }
+        return { data, error };
+      }
+
+      async signUpWithEmail(email, password) {
+        if (!this.supabaseClient) return { error: 'Kein Supabase' };
+        const { data, error } = await this.supabaseClient.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: window.location.origin + window.location.pathname }
+        });
+        return { data, error };
+      }
+
+      async signOut() {
+        if (this.supabaseClient) {
+          await this.supabaseClient.auth.signOut();
+        }
+        this.user = null;
+        this.userId = null;
+      }
+
+      // ---- Legacy Supabase init (for backwards compat) ----
+      async initSupabase(url, key) {
+        try {
+          const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2.45.0');
+          this.supabaseClient = createClient(url, key);
+          this.isDemo = false;
+          return true;
+        } catch (e) {
+          console.error('Supabase init failed:', e);
+          return false;
+        }
+      }
+
+      // ---- Token Refresh Helper ----
+      async _withRetry(fn) {
+        try {
+          const result = await fn();
+          if (result.error?.message?.includes('JWT expired')) {
+            await this.supabaseClient.auth.refreshSession();
+            return await fn();
+          }
+          return result;
+        } catch (e) {
+          console.error('DB operation failed:', e);
+          return { data: null, error: e };
+        }
+      }
+
+      async getEntries(date = null) {
+        const targetDate = date ? new Date(date).toISOString().split('T')[0] : this.getTodayDate();
+
+        if (this.isDemo) {
+          return DEMO_DATA.entries[targetDate] || { morning: null, evening: null };
+        }
+
+        if (!this.supabaseClient) return { morning: null, evening: null };
+
+        try {
+          const result = await this._withRetry(async () => await this.supabaseClient
+            .from('daily_entries')
+            .select('*')
+            .eq('user_id', this.userId)
+            .eq('entry_date', targetDate)
+            .single());
+
+          return result.data || { morning: null, evening: null };
+        } catch (e) {
+          console.error('getEntries error:', e);
+          return { morning: null, evening: null };
+        }
+      }
+
+      async saveEntry(date, type, content) {
+        const targetDate = date || this.getTodayDate();
+
+        if (this.isDemo) {
+          if (!DEMO_DATA.entries[targetDate]) {
+            DEMO_DATA.entries[targetDate] = { morning: null, evening: null };
+          }
+          DEMO_DATA.entries[targetDate][type] = content;
+          return true;
+        }
+
+        if (!this.supabaseClient) return false;
+
+        try {
+          const existing = await this.getEntries(targetDate);
+          const payload = { ...existing, [type]: content, entry_date: targetDate, user_id: this.userId };
+
+          const result = await this._withRetry(async () => await this.supabaseClient
+            .from('daily_entries')
+            .upsert(payload, { onConflict: ['user_id', 'entry_date'] }));
+
+          return !result.error;
+        } catch (e) {
+          console.error('saveEntry error:', e);
+          return false;
+        }
+      }
+
+      async getStreak() {
+        const dates = this.isDemo
+          ? Object.keys(DEMO_DATA.entries).filter(d => DEMO_DATA.entries[d].morning || DEMO_DATA.entries[d].evening)
+          : await this.getAllEntryDates();
+
+        if (dates.length === 0) return { streak: 0, freeze: false };
+
+        dates.sort().reverse();
+        let streak = 0;
+        let freezeUsed = false;
+
+        const today = this.getTodayDate();
+        let currentDate = new Date(today);
+
+        for (const dateStr of dates) {
+          const entryDate = new Date(dateStr);
+          const daysDiff = Math.floor((currentDate - entryDate) / (1000 * 60 * 60 * 24));
+
+          if (daysDiff <= streak + 1) {
+            streak++;
+            currentDate = entryDate;
+          } else {
+            break;
+          }
+        }
+
+        return { streak: Math.max(1, streak), freeze: freezeUsed };
+      }
+
+      async getAllEntryDates() {
+        if (this.isDemo) {
+          return Object.keys(DEMO_DATA.entries);
+        }
+
+        if (!this.supabaseClient) return [];
+
+        try {
+          const result = await this._withRetry(async () => await this.supabaseClient
+            .from('daily_entries')
+            .select('entry_date')
+            .eq('user_id', this.userId));
+
+          return result.data ? result.data.map(d => d.entry_date) : [];
+        } catch (e) {
+          console.error('getAllEntryDates error:', e);
+          return [];
+        }
+      }
+
+      async toggleHabit(habitId, date) {
+        const key = `${date}_${habitId}`;
+
+        if (this.isDemo) {
+          if (!DEMO_DATA.habitTracks[key]) {
+            DEMO_DATA.habitTracks[key] = true;
+          } else {
+            delete DEMO_DATA.habitTracks[key];
+          }
+          return !DEMO_DATA.habitTracks[key];
+        }
+
+        if (!this.supabaseClient) return false;
+
+        try {
+          const exists = DEMO_DATA.habitTracks[key];
+          if (exists) {
+            await this.supabaseClient
+              .from('habit_tracks')
+              .delete()
+              .eq('user_id', this.userId)
+              .eq('habit_id', habitId)
+              .eq('track_date', date);
+          } else {
+            await this.supabaseClient
+              .from('habit_tracks')
+              .insert({ user_id: this.userId, habit_id: habitId, track_date: date });
+          }
+          return !exists;
+        } catch (e) {
+          console.error('toggleHabit error:', e);
+          return false;
+        }
+      }
+
+      async getHabitStatus(habitId, date) {
+        const key = `${date}_${habitId}`;
+        return this.isDemo ? !!DEMO_DATA.habitTracks[key] : false;
+      }
+
+      getTodayDate() {
+        const now = new Date();
+        return now.toISOString().split('T')[0];
+      }
+
+      isMorningTime() {
+        const hour = new Date().getHours();
+        return hour < 14;
+      }
+    }
+
+    // ============================================================================
+    // COMPONENT: Toast System
+    // ============================================================================
+
+    let toastQueue = [];
+    let toastTimeouts = new Map();
+
+    function showToast(message, type = 'success', duration = 4000) {
+      const id = Date.now();
+      toastQueue.push({ id, message, type });
+
+      const timeout = setTimeout(() => {
+        toastQueue = toastQueue.filter(t => t.id !== id);
+        toastTimeouts.delete(id);
+        app.render();
+      }, duration);
+
+      toastTimeouts.set(id, timeout);
+      app.render();
+    }
+
+    function Toast() {
+      return html`
+        <div class="toast-container">
+          ${toastQueue.map(toast => html`
+            <div key=${toast.id} class=${'toast ' + toast.type}>
+              ${toast.message}
+            </div>
+          `)}
+        </div>
+      `;
+    }
+
+    // ============================================================================
+    // COMPONENT: Auth Screen (Login / Register)
+    // ============================================================================
+
+    // Auth state (global, persists between renders)
+    let authMode = 'login'; // 'login' | 'register' | 'config'
+    let authEmail = '';
+    let authPassword = '';
+    let authError = '';
+    let authLoading = false;
+
+    // Supabase config (saved in memory — user enters once per session)
+    let supabaseUrl = '';
+    let supabaseKey = '';
+
+    function AuthScreen({ onLogin, onDemoMode, dataService }) {
+
+      const handleGoogleLogin = async () => {
+        if (!dataService) {
+          authMode = 'config';
+          authError = 'Bitte zuerst Supabase verbinden';
+          app.render();
+          return;
+        }
+        authLoading = true;
+        authError = '';
+        app.render();
+        const { error } = await dataService.signInWithGoogle();
+        if (error) {
+          authError = error.message || 'Google-Login fehlgeschlagen';
+          authLoading = false;
+          app.render();
+        }
+        // Redirect happens automatically — onAuthStateChange handles the rest
+      };
+
+      const handleEmailAuth = async () => {
+        if (!dataService) {
+          authMode = 'config';
+          authError = 'Bitte zuerst Supabase verbinden';
+          app.render();
+          return;
+        }
+        if (!authEmail.trim() || !authPassword.trim()) {
+          authError = 'Bitte E-Mail und Passwort eingeben';
+          app.render();
+          return;
+        }
+        if (authPassword.length < 8) {
+          authError = 'Passwort muss mindestens 8 Zeichen haben';
+          app.render();
+          return;
+        }
+
+        authLoading = true;
+        authError = '';
+        app.render();
+
+        let result;
+        if (authMode === 'register') {
+          result = await dataService.signUpWithEmail(authEmail.trim(), authPassword);
+          if (!result.error) {
+            showToast('Bestätigungs-E-Mail gesendet! Prüfe dein Postfach.', 'success');
+            authMode = 'login';
+            authLoading = false;
+            app.render();
+            return;
+          }
+        } else {
+          result = await dataService.signInWithEmail(authEmail.trim(), authPassword);
+        }
+
+        if (result.error) {
+          authError = result.error.message || 'Authentifizierung fehlgeschlagen';
+          if (authError.includes('Invalid login')) authError = 'E-Mail oder Passwort falsch';
+          if (authError.includes('Email not confirmed')) authError = 'Bitte bestätige zuerst deine E-Mail';
+        }
+        authLoading = false;
+        app.render();
+      };
+
+      const handleConfigSave = async () => {
+        if (!supabaseUrl.trim() || !supabaseKey.trim()) {
+          authError = 'Bitte URL und Key eingeben';
+          app.render();
+          return;
+        }
+        authLoading = true;
+        authError = '';
+        app.render();
+
+        const ds = await DataService.createWithSupabase(supabaseUrl.trim(), supabaseKey.trim());
+        if (ds) {
+          onLogin('supabase-init', ds);
+          authMode = 'login';
+        } else {
+          authError = 'Verbindung fehlgeschlagen — URL und Key prüfen';
+        }
+        authLoading = false;
+        app.render();
+      };
+
+      // Config screen for entering Supabase credentials
+      if (authMode === 'config') {
+        return html`
+          <div class="screen auth-screen active">
+            <div class="auth-logo">☁️</div>
+            <div>
+              <div class="auth-title" style="font-size:24px">Supabase verbinden</div>
+              <div class="auth-subtitle">Einmalig: Gib deine Projekt-URL und den anon key ein.</div>
+            </div>
+            <div class="auth-form">
+              ${authError ? html`<div class="auth-error">${authError}</div>` : ''}
+              <input
+                type="url"
+                class="input-field"
+                placeholder="https://dein-projekt.supabase.co"
+                value=${supabaseUrl}
+                oninput=${e => supabaseUrl = e.target.value}
+              />
+              <input
+                type="text"
+                class="input-field"
+                placeholder="eyJhbGciOiJ... (anon key)"
+                value=${supabaseKey}
+                oninput=${e => supabaseKey = e.target.value}
+                style="font-size:13px"
+              />
+              <button class="btn btn-primary" onclick=${handleConfigSave} disabled=${authLoading}>
+                ${authLoading ? '⏳ Verbinde...' : '✓ Verbinden & weiter'}
+              </button>
+              <div class="auth-demo-link" onclick=${() => { authMode = 'login'; authError = ''; app.render(); }}>
+                ← Zurück
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      // Main auth screen
+      return html`
+        <div class="screen auth-screen active">
+          <div class="auth-logo">📔</div>
+          <div>
+            <div class="auth-title">6-Minuten-Tagebuch</div>
+            <div class="auth-subtitle">Schreibe dich glücklich in nur 6 Minuten täglich</div>
+          </div>
+
+          <div class="auth-form">
+            ${authError ? html`<div class="auth-error">${authError}</div>` : ''}
+
+            ${dataService ? html`
+              <button class="btn btn-google" onclick=${handleGoogleLogin} disabled=${authLoading}>
+                <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                Mit Google anmelden
+              </button>
+
+              <div class="auth-divider">oder</div>
+            ` : ''}
+
+            <input
+              type="email"
+              class="input-field"
+              placeholder="E-Mail-Adresse"
+              value=${authEmail}
+              oninput=${e => authEmail = e.target.value}
+              onkeydown=${e => e.key === 'Enter' && handleEmailAuth()}
+            />
+            <input
+              type="password"
+              class="input-field"
+              placeholder="Passwort (mind. 8 Zeichen)"
+              value=${authPassword}
+              oninput=${e => authPassword = e.target.value}
+              onkeydown=${e => e.key === 'Enter' && handleEmailAuth()}
+            />
+
+            <button class="btn btn-primary" onclick=${handleEmailAuth} disabled=${authLoading || !dataService}>
+              ${authLoading ? '⏳' : ''} ${authMode === 'register' ? 'Konto erstellen' : 'Anmelden'}
+            </button>
+
+            ${!dataService ? html`
+              <button class="btn btn-secondary" onclick=${() => { authMode = 'config'; authError = ''; app.render(); }}>
+                ☁️ Supabase verbinden
+              </button>
+            ` : ''}
+
+            ${authMode === 'login' && dataService ? html`
+              <div class="auth-demo-link" onclick=${async () => {
+                if (!authEmail.trim()) { authError = 'Bitte E-Mail eingeben'; app.render(); return; }
+                authLoading = true; app.render();
+                const { error } = await dataService.supabaseClient.auth.resetPasswordForEmail(authEmail.trim(), {
+                  redirectTo: window.location.origin + window.location.pathname
+                });
+                authLoading = false;
+                if (error) { authError = error.message; } else { showToast('Passwort-Reset-Link gesendet!', 'success'); }
+                app.render();
+              }}>Passwort vergessen?</div>
+            ` : ''}
+
+            <div class="auth-toggle" onclick=${() => {
+              authMode = authMode === 'login' ? 'register' : 'login';
+              authError = '';
+              app.render();
+            }}>
+              ${authMode === 'register'
+                ? html`Schon ein Konto? <span>Anmelden</span>`
+                : html`Noch kein Konto? <span>Registrieren</span>`
+              }
+            </div>
+
+            <div class="auth-demo-link" onclick=${onDemoMode}>
+              Erstmal ohne Konto testen →
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // ============================================================================
+    // COMPONENT: Onboarding
+    // ============================================================================
+
+    const ONBOARDING_SCREENS = [
+      {
+        icon: '📖',
+        title: 'Willkommen beim 6-Minuten-Tagebuch',
+        text: 'Diese Methode hilft dir, jeden Tag bewusster zu leben. Drei Minuten morgens, drei Minuten abends.'
+      },
+      {
+        icon: '🌅',
+        title: '3 Minuten morgens',
+        text: 'Starte deinen Tag mit Intention: Wofür bist du dankbar? Was soll wunderbar werden? Wer willst du sein?'
+      },
+      {
+        icon: '🌙',
+        title: '3 Minuten abends',
+        text: 'Reflektiere deinen Tag: Was war schön? Was hast du gelernt? Was könntest du besser machen?'
+      }
+    ];
+
+    function OnboardingScreen({ onComplete }) {
+      let currentScreen = 0;
+
+      const handleNext = () => {
+        if (currentScreen < ONBOARDING_SCREENS.length - 1) {
+          currentScreen++;
+          app.render();
+        } else {
+          onComplete();
+        }
+      };
+
+      const screen = ONBOARDING_SCREENS[currentScreen];
+
+      return html`
+        <div class="screen onboarding-screen active">
+          <div class="onboarding-icon">${screen.icon}</div>
+          <div>
+            <div class="onboarding-title">${screen.title}</div>
+            <div class="onboarding-text">${screen.text}</div>
+          </div>
+          <div class="onboarding-dots">
+            ${ONBOARDING_SCREENS.map((_, idx) => html`
+              <div class=${'dot ' + (idx === currentScreen ? 'active' : '')}></div>
+            `)}
+          </div>
+          <button class="btn btn-primary" onclick=${handleNext}>
+            ${currentScreen === ONBOARDING_SCREENS.length - 1 ? '🚀 Los geht\'s!' : 'Weiter →'}
+          </button>
+        </div>
+      `;
+    }
+
+    // ============================================================================
+    // COMPONENT: Dashboard
+    // ============================================================================
+
+    function DashboardScreen({ dataService, onNavigate, todayEntry, streak, habits }) {
+      const todayDate = dataService.getTodayDate();
+      const isMorning = dataService.isMorningTime();
+      const hasMorning = todayEntry?.morning;
+      const hasEvening = todayEntry?.evening;
+      const allDone = hasMorning && hasEvening;
+      // Streak Freeze
+      const freezesRemaining = dataService.isDemo ? (DEMO_DATA.freezesRemaining ?? 2) : 0;
+      const todayFrozen = dataService.isDemo ? !!DEMO_DATA.frozenDates?.[todayDate] : false;
+
+      // Meilenstein
+      const nextMilestone = MILESTONES.find(m => m > streak) || 365;
+      const prevMilestone = MILESTONES.filter(m => m <= streak).pop() || 0;
+      const milestoneProgress = streak > 0 ? Math.min(100, ((streak - prevMilestone) / (nextMilestone - prevMilestone)) * 100) : 0;
+
+      const quote = QUOTES[Math.floor(Math.random() * QUOTES.length)];
+
+      return html`
+        <div class="screen dashboard-screen active">
+          <div class="quote-card">"${quote}"</div>
+
+          <div class="streak-container">
+            <div class="streak-info">
+              <div style="font-size: 32px;">🔥</div>
+              <div>
+                <div class="streak-number">${streak}</div>
+                <div class="streak-label">Tage Streak</div>
+              </div>
+            </div>
+            <div class="status-dots">
+              <div class=${'status-dot ' + (hasMorning ? 'done' : 'pending')}>
+                <div style="font-size: 16px;">${hasMorning ? '✓' : '🌅'}</div>
+                <div class="status-time">Mo</div>
+              </div>
+              <div class=${'status-dot ' + (hasEvening ? 'done' : 'pending')}>
+                <div style="font-size: 16px;">${hasEvening ? '✓' : '🌙'}</div>
+                <div class="status-time">Ab</div>
+              </div>
+            </div>
+          </div>
+
+          ${allDone ? html`
+          ${streak > 0 && !allDone ? html`
+            <div style="display:flex;justify-content:space-between;align-items:center;background:var(--card,#FFFFFF);padding:12px 16px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06)">
+              <div style="font-size:13px;color:#6B7280">
+                🧊 Streak-Freeze: ${todayFrozen ? 'Aktiv heute' : freezesRemaining + ' verfügbar'}
+              </div>
+              ${!todayFrozen && freezesRemaining > 0 ? html`
+                <button class="btn btn-small" style="background:#E0F2FE;color:#0369A1;border:none;padding:8px 12px;font-size:12px;min-height:36px" onclick=${() => {
+                  if (dataService.isDemo) {
+                    if (!DEMO_DATA.frozenDates) DEMO_DATA.frozenDates = {};
+                    DEMO_DATA.frozenDates[todayDate] = true;
+                    DEMO_DATA.freezesRemaining = (DEMO_DATA.freezesRemaining ?? 2) - 1;
+                  }
+                  showToast('Streak-Freeze aktiviert!', 'info');
+                  app.render();
+                }}>Heute einfrieren</button>
+              ` : '}
+            </div>
+          ` : '} 
+            <div style="text-align: center; padding: 24px; background: #F3F4F6; border-radius: 16px; font-size: 18px; font-weight: 600; color: #1A1A2E;">
+              🎉 Alles erledigt heute!
+            </div>
+          ` : html`
+            <button class="btn btn-primary main-action-btn" onclick=${() => onNavigate('journal', isMorning ? 'morning' : 'evening')}>
+              📝 Tagebuch schreiben
+            </button>
+          `}
+
+          ${streak > 0 ? html`
+            <div style="background:var(--card,#FFFFFF);padding:16px 20px;border-radius:16px;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <div style="font-size:13px;font-weight:600;color:var(--text,#1A1A2E)">Nächster Meilenstein: ${nextMilestone} Tage</div>
+                <div style="font-size:12px;color:#6B7280">${streak}/${nextMilestone}</div>
+              </div>
+              <div style="height:8px;background:#F3F4F6;border-radius:4px;overflow:hidden">
+                <div style="height:100%;width:${milestoneProgress}%;background:linear-gradient(90deg,#E8B86D,#16a34a);border-radius:4px;transition:width 0.5s ease"></div>
+              </div>
+              ${MILESTONES.filter(m => m <= streak).length > 0 ? html`
+                <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+                  ${MILESTONES.filter(m => m <= streak).map(m => html`
+                    <div style="background:#FEF3C7;color:#92400E;font-size:11px;font-weight:600;padding:4px 8px;border-radius:6px">🏆 ${m} Tage</div>
+                  `)}
+                </div>
+              ` : ''}
+            </div>
+          ` : ''}
+
+          ${habits && habits.length > 0 ? html`
+            <div class="habits-widget">
+              <div class="habits-title">🎯 Gewohnheiten heute</div>
+              <div class="habits-list">
+                ${habits.map(habit => html`
+                  <div key=${habit.id} class="habit-item">
+                    <div class="habit-checkbox checked" onclick=${() => {
+                      dataService.toggleHabit(habit.id, todayDate);
+                      app.render();
+                    }}>
+                      <span style="font-size: 12px;">✓</span>
+                    </div>
+                    <div class="habit-name">${habit.name}</div>
+                  </div>
+                `)}
+              </div>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    // ============================================================================
+    // COMPONENT: Journal Entry
+    // ============================================================================
+
+    const JOURNAL_QUESTIONS = {
+      morning: [
+        { key: 'grateful', label: 'Wofür bin ich heute dankbar?', count: 3 },
+        { key: 'wonderful', label: 'Was würde den Tag wunderbar machen?', count: 2 },
+        { key: 'affirmation', label: 'Wer will ich heute sein?', count: 1 }
+      ],
+      evening: [
+        { key: 'great_things', label: 'Tolle Dinge, die ich heute erlebt habe', count: 3 },
+        { key: 'learned', label: 'Was habe ich heute gelernt?', count: 1 },
+        { key: 'improve', label: 'Was könnte ich morgen besser machen?', count: 1 }
+      ]
+    };
+
+    const WEEKLY_QUESTIONS = [
+      { key: 'biggest_win', label: 'Was war mein größter Erfolg diese Woche?' },
+      { key: 'grateful_for', label: 'Wofür bin ich diese Woche besonders dankbar?' },
+      { key: 'learned_about_me', label: 'Was habe ich diese Woche über mich gelernt?' },
+      { key: 'change_next_week', label: 'Was möchte ich nächste Woche anders machen?' },
+      { key: 'week_rating', label: 'Wie bewerte ich meine Woche?', type: 'rating' }
+    ];
+
+    function getISOWeek(date) {
+      const d = new Date(date);
+      d.setHours(0,0,0,0);
+      d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7);
+      const week1 = new Date(d.getFullYear(), 0, 4);
+      return d.getFullYear() + '-W' + String(1 + Math.round(((d - week1) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7)).padStart(2, '0');
+    }
+
+    function JournalScreen({ dataService, onClose, type, backfillDate }) {
+      let currentQuestion = 0;
+      let answers = {};
+      const questions = JOURNAL_QUESTIONS[type];
+
+      const handleNext = async () => {
+        if (currentQuestion < questions.length - 1) {
+          currentQuestion++;
+          app.render();
+        } else {
+          await saveAndClose();
+        }
+      };
+
+      const handleSkip = () => {
+        if (currentQuestion < questions.length - 1) {
+          currentQuestion++;
+          app.render();
+        } else {
+          onClose();
+        }
+      };
+
+      const saveAndClose = async () => {
+        const success = await dataService.saveEntry(backfillDate || null, type, answers);
+        if (success) {
+          showToast('Eintrag gespeichert ✓', 'success');
+          triggerConfetti();
+          setTimeout(() => onClose(), 1500);
+        } else {
+          showToast('Speichern fehlgeschlagen. Bitte prüfe deine Verbindung und versuche es erneut.', 'error');
+        }
+      };
+
+      const question = questions[currentQuestion];
+
+      return html`
+        <div class="screen journal-screen active">
+          <div class="journal-header">
+            <div class="journal-title">${type === 'morning' ? '🌅 Morgens' : '🌙 Abends'}${backfillDate ? html` <span style="font-size:14px;color:var(--text-secondary);font-weight:400">— ${backfillDate}</span>` : ''}</div>
+            <div class="journal-close" onclick=${onClose}>✕</div>
+          </div>
+
+          <div class="journal-progress">
+            ${questions.map((_, idx) => html`
+              <div class=${'progress-bar ' + (idx <= currentQuestion ? 'active' : '')}></div>
+            `)}
+          </div>
+
+          <div class="question-section">
+            <div class="question-label">${question.label}</div>
+            <div class="question-inputs">
+              ${Array(question.count).fill().map((_, idx) => html`
+                <textarea
+                  class="input-field"
+                  placeholder=${`Antwort ${idx + 1}`}
+                  rows=${2}
+                  maxlength=${500}
+                  oninput=${e => {
+                    if (question.count > 1) {
+                      if (!answers[question.key]) answers[question.key] = [];
+                      answers[question.key][idx] = e.target.value;
+                    } else {
+                      answers[question.key] = e.target.value;
+                    }
+                  }}
+                  onblur=${async e => {
+                    // Auto-Save bei Fokus-Verlust
+                    if (e.target.value.trim()) {
+                      await dataService.saveEntry(null, type, answers);
+                    }
+                  }}
+                >${question.count > 1 ? (answers[question.key]?.[idx] || '') : (answers[question.key] || '')}</textarea>
+              `)}
+            </div>
+          </div>
+
+          <div class="journal-footer">
+            <button class="btn skip-btn btn-small" onclick=${handleSkip}>Überspringen</button>
+            <button class="btn btn-primary btn-small" onclick=${handleNext}>
+              ${currentQuestion === questions.length - 1 ? '✓ Fertig' : '→ Weiter'}
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    // ============================================================================
+    // COMPONENT: Archive/Calendar
+    // ============================================================================
+
+    // Globaler State für Kalender-Monat (persistiert zwischen Re-Renders)
+    let archiveViewMonth = new Date();
+    let archiveSelectedDate = null;
+    let archiveSelectedEntry = null;
+
+    function formatEntryContent(content) {
+      if (!content || typeof content !== 'object') return [];
+      const parts = [];
+      if (content.grateful) parts.push({ label: 'Dankbar für', items: content.grateful.filter(Boolean) });
+      if (content.wonderful) parts.push({ label: 'Wunderbar wäre', items: content.wonderful.filter(Boolean) });
+      if (content.affirmation) parts.push({ label: 'Heute will ich sein', items: [content.affirmation] });
+      if (content.great_things) parts.push({ label: 'Tolle Dinge', items: content.great_things.filter(Boolean) });
+      if (content.learned) parts.push({ label: 'Gelernt', items: [content.learned] });
+      if (content.improve) parts.push({ label: 'Besser machen', items: [content.improve] });
+      return parts;
+    }
+
+    function ArchiveScreen({ dataService, todayEntry }) {
+      const getDaysInMonth = (date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+      const getFirstDayOfMonth = (date) => {
+        let d = new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+        return d === 0 ? 7 : d; // Montag = 1
+      };
+      const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+      const weekDays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+
+      const firstDay = getFirstDayOfMonth(archiveViewMonth);
+      const daysInMonth = getDaysInMonth(archiveViewMonth);
+      const daysInPrevMonth = getDaysInMonth(new Date(archiveViewMonth.getFullYear(), archiveViewMonth.getMonth() - 1));
+
+      const calendarDays = [];
+      for (let i = firstDay - 1; i >= 1; i--) {
+        calendarDays.push({ day: daysInPrevMonth - i + 1, isOtherMonth: true });
+      }
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${archiveViewMonth.getFullYear()}-${String(archiveViewMonth.getMonth()+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+        const hasEntry = dataService.isDemo ? !!DEMO_DATA.entries[dateStr] : false;
+        calendarDays.push({ day, isOtherMonth: false, dateStr, hasEntry });
+      }
+      const remainingDays = 42 - calendarDays.length;
+      for (let day = 1; day <= remainingDays; day++) {
+        calendarDays.push({ day, isOtherMonth: true });
+      }
+
+      const today = new Date();
+      const isCurrentMonth = archiveViewMonth.getMonth() === today.getMonth() && archiveViewMonth.getFullYear() === today.getFullYear();
+
+      const handleDayClick = async (dateStr) => {
+        if (!dateStr) return;
+        archiveSelectedDate = dateStr;
+        archiveSelectedEntry = await dataService.getEntries(dateStr);
+        app.render();
+      };
+
+      // Formatiere Eintrag hübsch
+      const renderEntry = (entry, type) => {
+        if (!entry) return '';
+        const parts = formatEntryContent(entry);
+        if (!parts.length) return html`<div class="entry-text" style="color:#6B7280;font-style:italic">Keine Details</div>`;
+        return parts.map(p => html`
+          <div style="margin-bottom:8px">
+            <div style="font-size:12px;font-weight:600;color:#1A1A2E;margin-bottom:4px">${p.label}</div>
+            ${p.items.map(item => html`<div style="font-size:14px;color:#4B5563;padding:2px 0">• ${item}</div>`)}
+          </div>
+        `);
+      };
+
+      return html`
+        <div class="screen archive-screen active">
+          <div class="calendar-header">
+            <div class="calendar-month">${monthNames[archiveViewMonth.getMonth()]} ${archiveViewMonth.getFullYear()}</div>
+            <div class="calendar-nav">
+              <button onclick=${() => {
+                archiveViewMonth = new Date(archiveViewMonth.getFullYear(), archiveViewMonth.getMonth() - 1);
+                archiveSelectedDate = null;
+                archiveSelectedEntry = null;
+                app.render();
+              }}>←</button>
+              <button onclick=${() => {
+                archiveViewMonth = new Date(archiveViewMonth.getFullYear(), archiveViewMonth.getMonth() + 1);
+                archiveSelectedDate = null;
+                archiveSelectedEntry = null;
+                app.render();
+              }}>→</button>
+            </div>
+          </div>
+
+          <div class="weekdays">
+            ${weekDays.map(day => html`<div class="weekday">${day}</div>`)}
+          </div>
+
+          <div class="calendar-grid">
+            ${calendarDays.map(({ day, isOtherMonth, dateStr, hasEntry }) => html`
+              <div
+                class=${'calendar-day' + (isOtherMonth ? ' other-month' : '') + (isCurrentMonth && day === today.getDate() && !isOtherMonth ? ' today' : '') + (hasEntry ? ' has-entry' : '') + (dateStr === archiveSelectedDate ? ' selected' : '')}
+                onclick=${() => !isOtherMonth && handleDayClick(dateStr)}
+                style=${dateStr === archiveSelectedDate ? 'background:#E8B86D;color:#1A1A2E;font-weight:700' : ''}
+              >
+                ${day}
+              </div>
+            `)}
+          </div>
+
+          ${archiveSelectedEntry && (archiveSelectedEntry.morning || archiveSelectedEntry.evening) ? html`
+            <div class="entry-detail">
+              <div style="font-size:12px;color:#6B7280;margin-bottom:12px">${archiveSelectedDate}</div>
+              ${archiveSelectedEntry.morning ? html`
+                <div class="entry-section-title">🌅 Morgens</div>
+                ${renderEntry(archiveSelectedEntry.morning, 'morning')}
+              ` : ''}
+              ${archiveSelectedEntry.evening ? html`
+                <div class="entry-section-title">🌙 Abends</div>
+                ${renderEntry(archiveSelectedEntry.evening, 'evening')}
+              ` : ''}
+            </div>
+          ` : ''}
+
+          ${archiveSelectedDate && (!archiveSelectedEntry || (!archiveSelectedEntry.morning && !archiveSelectedEntry.evening)) && new Date(archiveSelectedDate) <= new Date() ? html`
+            <div class="entry-detail" style="text-align:center">
+              <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">${archiveSelectedDate}</div>
+              <div style="font-size:14px;color:var(--text-secondary);margin-bottom:16px">Kein Eintrag für diesen Tag</div>
+              <button class="btn btn-primary btn-small" onclick=${() => {
+                window._backfillDate = archiveSelectedDate;
+                if (window._appNavigate) window._appNavigate('journal', 'morning');
+              }}>
+                📝 Eintrag nachtragen
+              </button>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    // ============================================================================
+    // COMPONENT: Weekly Reflection
+    // ============================================================================
+
+    let reflectionAnswers = {};
+    let reflectionWeek = getISOWeek(new Date());
+    let reflectionSaved = false;
+
+    function WeeklyReflectionScreen({ dataService }) {
+      // Load existing answers for current week
+      if (dataService.isDemo) {
+        const existing = DEMO_DATA.weeklyReflections[reflectionWeek];
+        if (existing && Object.keys(reflectionAnswers).length === 0) {
+          reflectionAnswers = { ...existing };
+        }
+      }
+
+      const handleSave = async () => {
+        if (dataService.isDemo) {
+          DEMO_DATA.weeklyReflections[reflectionWeek] = { ...reflectionAnswers };
+        }
+        reflectionSaved = true;
+        showToast('Wochenreflexion gespeichert ✓', 'success');
+        triggerConfetti();
+        app.render();
+      };
+
+      const weekLabel = reflectionWeek.replace('-W', ', Woche ');
+
+      return html`
+        <div class="screen reflection-screen active">
+          <div class="reflection-header">
+            <div class="reflection-title">📝 Wochenreflexion</div>
+            <div class="reflection-week">${weekLabel}</div>
+          </div>
+
+          ${WEEKLY_QUESTIONS.map(q => html`
+            <div class="reflection-question" key=${q.key}>
+              <div class="reflection-label">${q.label}</div>
+              ${q.type === 'rating' ? html`
+                <div class="reflection-rating">
+                  ${Array(10).fill().map((_, i) => html`
+                    <button
+                      class=${'rating-btn' + (reflectionAnswers[q.key] === (i+1) ? ' selected' : '')}
+                      onclick=${() => { reflectionAnswers[q.key] = i + 1; app.render(); }}
+                    >${i + 1}</button>
+                  `)}
+                </div>
+              ` : html`
+                <textarea
+                  class="input-field"
+                  rows="3"
+                  maxlength="500"
+                  placeholder="Deine Antwort..."
+                  value=${reflectionAnswers[q.key] || ''}
+                  oninput=${e => { reflectionAnswers[q.key] = e.target.value; }}
+                  style="-webkit-user-select:text;user-select:text;min-height:60px"
+                ></textarea>
+              `}
+            </div>
+          `)}
+
+          <button class="btn btn-primary" onclick=${handleSave} style="margin-top:8px">
+            ✓ Reflexion speichern
+          </button>
+
+          ${reflectionSaved ? html`
+            <div style="text-align:center;padding:16px;color:#16a34a;font-weight:600">
+              Gespeichert für ${weekLabel}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    // ============================================================================
+    // COMPONENT: Settings
+    // ============================================================================
+
+    function SettingsScreen({ dataService, onNavigate, onLogout }) {
+      const userEmail = dataService.user?.email || (dataService.isDemo ? 'Demo-Modus' : 'Unbekannt');
+      const isConnected = !dataService.isDemo && dataService.supabaseClient;
+
+      return html`
+        <div class="screen settings-screen active">
+          <div class="settings-section">
+            <div class="settings-title">Konto</div>
+            <div class="settings-item">
+              <div class="settings-label">${userEmail}</div>
+              <div style="font-size:12px;color:#6B7280">${dataService.isDemo ? '🟡 Lokal' : '🟢 Cloud'}</div>
+            </div>
+            ${dataService.isDemo ? html`
+              <div class="settings-item" onclick=${() => onNavigate('supabase-setup')} style="cursor:pointer">
+                <div class="settings-label">☁️ Jetzt mit Supabase verbinden</div>
+                <div>→</div>
+              </div>
+            ` : ''}
+          </div>
+
+          <div class="settings-section">
+            <div class="settings-title">Darstellung</div>
+            <div class="settings-item" style="cursor:pointer" onclick=${() => setTheme(currentTheme === 'dark' ? 'light' : currentTheme === 'light' ? 'auto' : 'dark')}>
+              <div class="settings-label">${currentTheme === 'dark' ? '🌙 Dunkel' : currentTheme === 'light' ? '☀️ Hell' : '🌓 Automatisch'}</div>
+              <div style="font-size:12px;color:var(--text-secondary)">Tippen zum Wechseln</div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <div class="settings-title">Über die App</div>
+            <div class="settings-item">
+              <div class="settings-label">Version</div>
+              <div class="settings-value">1.1.0</div>
+            </div>
+            <div class="settings-item">
+              <div class="settings-label">Entwickelt mit ❤️</div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <button class="btn btn-secondary" style="width: 100%;" onclick=${onLogout}>
+              ${dataService.isDemo ? 'Zurück zum Start' : 'Abmelden'}
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    // ============================================================================
+    // MAIN APP COMPONENT
+    // ============================================================================
+
+    class App extends Component {
+      constructor(props) {
+        super(props);
+        this.state = {
+          screen: 'auth',         // 'auth' | 'onboarding' | 'dashboard' | 'journal' | 'archive' | 'settings'
+          dataService: null,       // DataService instance
+          authChecking: true,      // true while checking existing session
+          todayEntry: null,
+          streak: 0,
+          habits: [],
+          journalType: null,
+          backfillDate: null,
+          showOnboarding: false
+        };
+        this.unsubAuth = null;
+      }
+
+      async componentDidMount() {
+        // No automatic session restoration from sessionStorage
+        window._appNavigate = this.handleNavigate;
+        this.setState({ authChecking: false });
+      }
+
+      componentWillUnmount() {
+        if (this.unsubAuth) this.unsubAuth();
+      }
+
+      setupAuthListener(ds) {
+        if (this.unsubAuth) this.unsubAuth();
+        this.unsubAuth = ds.onAuthStateChange(async (event, session) => {
+          console.log('[Auth]', event, session?.user?.email);
+          if (event === 'SIGNED_IN' && session?.user) {
+            await this.enterApp(ds);
+          } else if (event === 'SIGNED_OUT') {
+            this.setState({ screen: 'auth', dataService: ds, authChecking: false });
+          }
+        });
+      }
+
+      async enterApp(ds) {
+        const entry = await ds.getEntries();
+        const streakData = await ds.getStreak();
+        this.setState({
+          screen: 'dashboard',
+          dataService: ds,
+          authChecking: false,
+          todayEntry: entry,
+          streak: streakData.streak,
+          habits: ds.isDemo ? DEMO_DATA.habits : [],
+          showOnboarding: false
+        });
+      }
+
+      // Called from AuthScreen
+      handleLogin = async (type, dsOrNull) => {
+        if (type === 'supabase-init') {
+          // User just connected Supabase — setup listener
+          const ds = dsOrNull;
+          this.setupAuthListener(ds);
+          this.setState({ dataService: ds });
+          showToast('Supabase verbunden! Jetzt anmelden.', 'success');
+          return;
+        }
+      };
+
+      handleDemoMode = async () => {
+        const ds = new DataService(true);
+        ds.userId = 'demo_user';
+        await this.enterApp(ds);
+      };
+
+      handleNavigate = async (screen, extra = null) => {
+        const { dataService } = this.state;
+
+        if (screen === 'dashboard') {
+          const entry = await dataService.getEntries();
+          const streakData = await dataService.getStreak();
+          this.setState({
+            screen,
+            todayEntry: entry,
+            streak: streakData.streak,
+            journalType: null,
+            backfillDate: null
+          });
+        } else if (screen === 'journal') {
+          const backfillDate = window._backfillDate || null;
+          window._backfillDate = null;
+          this.setState({ screen, journalType: extra, backfillDate });
+        } else if (screen === 'archive') {
+          const entry = await dataService.getEntries();
+          this.setState({ screen, todayEntry: entry });
+        } else if (screen === 'reflection') {
+          reflectionAnswers = {};
+          reflectionSaved = false;
+          reflectionWeek = getISOWeek(new Date());
+          this.setState({ screen });
+        } else if (screen === 'supabase-setup') {
+          authMode = 'config';
+          this.setState({ screen: 'auth' });
+        } else {
+          this.setState({ screen });
+        }
+      };
+
+      handleJournalClose = async () => {
+        const { dataService } = this.state;
+        const entry = await dataService.getEntries();
+        const streakData = await dataService.getStreak();
+        this.setState({
+          screen: 'dashboard',
+          todayEntry: entry,
+          streak: streakData.streak,
+          journalType: null
+        });
+      };
+
+      handleLogout = async () => {
+        const { dataService } = this.state;
+        if (dataService && !dataService.isDemo) {
+          await dataService.signOut();
+        }
+        authEmail = '';
+        authPassword = '';
+        authError = '';
+        this.setState({
+          screen: 'auth',
+          todayEntry: null,
+          streak: 0,
+          journalType: null,
+          showOnboarding: false
+        });
+      };
+
+      handleOnboardingComplete = () => {
+        this.setState({ showOnboarding: false });
+      };
+
+      render() {
+        const {
+          screen, dataService, authChecking, todayEntry, streak,
+          journalType, backfillDate, showOnboarding
+        } = this.state;
+
+        // Loading state while checking session
+        if (authChecking) {
+          return html`
+            <div id="app">
+              <div class="auth-loading">📔 Lade...</div>
+              <${Toast} />
+            </div>
+          `;
+        }
+
+        // Auth screen
+        if (screen === 'auth') {
+          return html`
+            <div id="app">
+              <${AuthScreen}
+                onLogin=${this.handleLogin}
+                onDemoMode=${this.handleDemoMode}
+                dataService=${dataService}
+              />
+              <${Toast} />
+            </div>
+          `;
+        }
+
+        // Onboarding
+        if (showOnboarding) {
+          return html`
+            <div id="app">
+              <${OnboardingScreen} onComplete=${this.handleOnboardingComplete} />
+              <${Toast} />
+            </div>
+          `;
+        }
+
+        // Main app
+        return html`
+          <div id="app">
+            <div class="screen-container">
+              <div class="screen-content">
+                ${screen === 'dashboard' ? html`
+                  <${DashboardScreen}
+                    dataService=${dataService}
+                    onNavigate=${this.handleNavigate}
+                    todayEntry=${todayEntry}
+                    streak=${streak}
+                    habits=${dataService.isDemo ? DEMO_DATA.habits : []}
+                  />
+                ` : ''}
+                ${screen === 'journal' ? html`
+                  <${JournalScreen}
+                    dataService=${dataService}
+                    onClose=${this.handleJournalClose}
+                    type=${journalType}
+                    backfillDate=${backfillDate}
+                  />
+                ` : ''}
+                ${screen === 'archive' ? html`
+                  <${ArchiveScreen}
+                    dataService=${dataService}
+                    todayEntry=${todayEntry}
+                  />
+                ` : ''}
+                ${screen === 'reflection' ? html`
+                  <${WeeklyReflectionScreen}
+                    dataService=${dataService}
+                  />
+                ` : ''}
+                ${screen === 'settings' ? html`
+                  <${SettingsScreen}
+                    dataService=${dataService}
+                    onNavigate=${this.handleNavigate}
+                    onLogout=${this.handleLogout}
+                  />
+                ` : ''}
+              </div>
+            </div>
+
+            <div class="tab-bar">
+              <button class=${'tab ' + (screen === 'dashboard' ? 'active' : '')} onclick=${() => this.handleNavigate('dashboard')}>
+                <div>🏠</div>
+                <div class="tab-label">Home</div>
+              </button>
+              <button class=${'tab ' + (screen === 'archive' ? 'active' : '')} onclick=${() => this.handleNavigate('archive')}>
+                <div>📅</div>
+                <div class="tab-label">Archiv</div>
+              </button>
+              <button class=${'tab ' + (screen === 'reflection' ? 'active' : '')} onclick=${() => this.handleNavigate('reflection')}>
+                <div>📝</div>
+                <div class="tab-label">Reflexion</div>
+              </button>
+              <button class=${'tab ' + (screen === 'settings' ? 'active' : '')} onclick=${() => this.handleNavigate('settings')}>
+                <div>⚙️</div>
+                <div class="tab-label">Settings</div>
+              </button>
+            </div>
+
+            <${Toast} />
+          </div>
+        `;
+      }
+    }
+
+    // ============================================================================
+    // CONFETTI EFFECT
+    // ============================================================================
+
+    function triggerConfetti() {
+      for (let i = 0; i < 50; i++) {
+        const confetti = document.createElement('div');
+        confetti.className = 'confetti';
+        confetti.style.left = Math.random() * window.innerWidth + 'px';
+        confetti.style.backgroundColor = ['#E8B86D', '#1A1A2E', '#16a34a'][Math.floor(Math.random() * 3)];
+        confetti.style.opacity = Math.random();
+        confetti.style.animationDelay = Math.random() * 0.5 + 's';
+        document.body.appendChild(confetti);
+
+        setTimeout(() => confetti.remove(), 3000);
+      }
+    }
+
+    // ============================================================================
+    // MOUNT APP
+    // ============================================================================
+
+    const app = {
+      render() {
+        render(h(App), document.getElementById('app'));
+      }
+    };
+
+    // Service Worker registrieren (PWA)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js')
+        .then(reg => console.log('[App] SW registered:', reg.scope))
+        .catch(err => console.warn('[App] SW registration failed:', err));
+    }
+
+    app.render();
+  </script>
+</body>
+</html>
