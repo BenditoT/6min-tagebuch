@@ -1,7 +1,7 @@
 // sw.js — Service Worker für 6-Minuten-Tagebuch PWA
-// v1.5.0: DSGVO Phase 3 — deleteUserData, Privacy Policy, PII-Logging bereinigt
+// v1.6.0: Phase 4 UX — Dark Mode Vars, Freeze-Confirm, Habits CRUD, Entry-Edit
 
-const CACHE_VERSION = 'v1.5.0';
+const CACHE_VERSION = 'v1.6.0';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `runtime-${CACHE_VERSION}`;
 

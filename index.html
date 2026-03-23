@@ -1586,6 +1586,55 @@
         }
       }
 
+      // ---- Habits CRUD ----
+
+      async addHabit(name) {
+        if (!name || !name.trim()) return null;
+        const trimmed = name.trim().slice(0, 100);
+
+        if (this.isDemo) {
+          const newId = Date.now();
+          DEMO_DATA.habits.push({ id: newId, name: trimmed, createdAt: Date.now() });
+          saveDemoData();
+          return { id: newId, name: trimmed };
+        }
+
+        if (!this.supabaseClient || !this.userId) return null;
+        try {
+          const result = await this._withRetry(async () =>
+            await this.supabaseClient.from('habits').insert({ user_id: this.userId, name: trimmed }).select().single());
+          return result.data;
+        } catch (e) {
+          console.error('addHabit error:', e);
+          return null;
+        }
+      }
+
+      async deleteHabit(habitId) {
+        if (this.isDemo) {
+          DEMO_DATA.habits = DEMO_DATA.habits.filter(h => h.id !== habitId);
+          // Zugehörige Tracks löschen
+          Object.keys(DEMO_DATA.habitTracks).forEach(key => {
+            if (key.endsWith('_' + habitId)) delete DEMO_DATA.habitTracks[key];
+          });
+          saveDemoData();
+          return true;
+        }
+
+        if (!this.supabaseClient || !this.userId) return false;
+        try {
+          // Erst Tracks löschen, dann Habit
+          await this._withRetry(async () =>
+            await this.supabaseClient.from('habit_tracks').delete().eq('habit_id', habitId).eq('user_id', this.userId));
+          const result = await this._withRetry(async () =>
+            await this.supabaseClient.from('habits').delete().eq('id', habitId).eq('user_id', this.userId));
+          return !result.error;
+        } catch (e) {
+          console.error('deleteHabit error:', e);
+          return false;
+        }
+      }
+
       getTodayDate() {
         const now = new Date();
         return now.toISOString().split('T')[0];
@@ -1920,6 +1969,10 @@
     // COMPONENT: Dashboard
     // ============================================================================
 
+    let freezeConfirmOpen = false;
+    let habitsEditMode = false;
+    let newHabitName = '';
+
     function DashboardScreen({ dataService, onNavigate, todayEntry, streak, habits }) {
       const todayDate = dataService.getTodayDate();
       const isMorning = dataService.isMorningTime();
@@ -1963,26 +2016,34 @@
 
           ${streak > 0 && !allDone ? html`
             <div style="display:flex;justify-content:space-between;align-items:center;background:var(--card,#FFFFFF);padding:12px 16px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06)">
-              <div style="font-size:13px;color:#6B7280">
+              <div style="font-size:13px;color:var(--text-secondary)">
                 🧊 Streak-Freeze: ${todayFrozen ? 'Aktiv heute' : freezesRemaining + ' verfügbar'}
               </div>
               ${!todayFrozen && freezesRemaining > 0 ? html`
-                <button class="btn btn-small" style="background:#E0F2FE;color:#0369A1;border:none;padding:8px 12px;font-size:12px;min-height:36px" onclick=${() => {
-                  if (dataService.isDemo) {
-                    if (!DEMO_DATA.frozenDates) DEMO_DATA.frozenDates = {};
-                    DEMO_DATA.frozenDates[todayDate] = true;
-                    DEMO_DATA.freezesRemaining = (DEMO_DATA.freezesRemaining ?? 2) - 1;
-                    saveDemoData();
+                <button class="btn btn-small" style="background:var(--bg-alt);color:var(--accent-light);border:1px solid var(--border);padding:8px 12px;font-size:12px;min-height:36px" onclick=${() => {
+                  if (freezeConfirmOpen) {
+                    // Bestätigt — Freeze aktivieren
+                    if (dataService.isDemo) {
+                      if (!DEMO_DATA.frozenDates) DEMO_DATA.frozenDates = {};
+                      DEMO_DATA.frozenDates[todayDate] = true;
+                      DEMO_DATA.freezesRemaining = (DEMO_DATA.freezesRemaining ?? 2) - 1;
+                      saveDemoData();
+                    }
+                    freezeConfirmOpen = false;
+                    showToast('Streak-Freeze aktiviert!', 'info');
+                    app.render();
+                  } else {
+                    freezeConfirmOpen = true;
+                    app.render();
                   }
-                  showToast('Streak-Freeze aktiviert!', 'info');
-                  app.render();
-                }}>Heute einfrieren</button>
+                }}>${freezeConfirmOpen ? '✓ Ja, einfrieren' : 'Heute einfrieren'}</button>
+                ${freezeConfirmOpen ? html`<button class="btn btn-small" style="background:none;color:var(--text-secondary);border:none;padding:8px 6px;font-size:12px;min-height:36px" onclick=${() => { freezeConfirmOpen = false; app.render(); }}>Abbrechen</button>` : ''}
               ` : ''}
             </div>
           ` : ''}
 
           ${allDone ? html`
-            <div style="text-align: center; padding: 24px; background: #F3F4F6; border-radius: 16px; font-size: 18px; font-weight: 600; color: #1A1A2E;">
+            <div style="text-align: center; padding: 24px; background: var(--bg-alt); border-radius: 16px; font-size: 18px; font-weight: 600; color: var(--text);">
               🎉 Alles erledigt heute!
             </div>
           ` : html`
@@ -1995,39 +2056,86 @@
             <div style="background:var(--card,#FFFFFF);padding:16px 20px;border-radius:16px;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                 <div style="font-size:13px;font-weight:600;color:var(--text,#1A1A2E)">Nächster Meilenstein: ${nextMilestone} Tage</div>
-                <div style="font-size:12px;color:#6B7280">${streak}/${nextMilestone}</div>
+                <div style="font-size:12px;color:var(--text-secondary)">${streak}/${nextMilestone}</div>
               </div>
-              <div style="height:8px;background:#F3F4F6;border-radius:4px;overflow:hidden">
+              <div style="height:8px;background:var(--bg-alt);border-radius:4px;overflow:hidden">
                 <div style="height:100%;width:${milestoneProgress}%;background:linear-gradient(90deg,#E8B86D,#16a34a);border-radius:4px;transition:width 0.5s ease"></div>
               </div>
               ${MILESTONES.filter(m => m <= streak).length > 0 ? html`
                 <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
                   ${MILESTONES.filter(m => m <= streak).map(m => html`
-                    <div style="background:#FEF3C7;color:#92400E;font-size:11px;font-weight:600;padding:4px 8px;border-radius:6px">🏆 ${m} Tage</div>
+                    <div style="background:var(--bg-alt);color:var(--accent-light);font-size:11px;font-weight:600;padding:4px 8px;border-radius:6px;border:1px solid var(--border)">🏆 ${m} Tage</div>
                   `)}
                 </div>
               ` : ''}
             </div>
           ` : ''}
 
-          ${habits && habits.length > 0 ? html`
-            <div class="habits-widget">
-              <div class="habits-title">🎯 Gewohnheiten heute</div>
-              <div class="habits-list">
-                ${habits.map(habit => html`
-                  <div key=${habit.id} class="habit-item">
+          <div class="habits-widget">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <div class="habits-title" style="margin-bottom:0">🎯 Gewohnheiten heute</div>
+              <button style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:13px;padding:4px 8px" onclick=${() => { habitsEditMode = !habitsEditMode; app.render(); }}>
+                ${habitsEditMode ? '✓ Fertig' : '✎ Bearbeiten'}
+              </button>
+            </div>
+            <div class="habits-list">
+              ${(habits || []).map(habit => html`
+                <div key=${habit.id} class="habit-item">
+                  ${!habitsEditMode ? html`
                     <div class="habit-checkbox checked" onclick=${async () => {
                       await dataService.toggleHabit(habit.id, todayDate);
                       app.render();
                     }}>
                       <span style="font-size: 12px;">✓</span>
                     </div>
-                    <div class="habit-name">${habit.name}</div>
-                  </div>
-                `)}
-              </div>
+                  ` : html`
+                    <button style="background:none;border:none;color:#DC2626;cursor:pointer;font-size:16px;padding:4px 8px" onclick=${async () => {
+                      await dataService.deleteHabit(habit.id);
+                      if (dataService.isDemo) {
+                        app.setState({ habits: [...DEMO_DATA.habits] });
+                      }
+                      app.render();
+                    }}>✕</button>
+                  `}
+                  <div class="habit-name">${escapeHtml(habit.name)}</div>
+                </div>
+              `)}
             </div>
-          ` : ''}
+            ${habitsEditMode ? html`
+              <div style="display:flex;gap:8px;margin-top:8px">
+                <input type="text" maxlength="100" placeholder="Neue Gewohnheit…"
+                  style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text)"
+                  value=${newHabitName}
+                  oninput=${e => { newHabitName = e.target.value; }}
+                  onkeydown=${async e => {
+                    if (e.key === 'Enter' && newHabitName.trim()) {
+                      const result = await dataService.addHabit(newHabitName);
+                      if (result) {
+                        newHabitName = '';
+                        if (dataService.isDemo) app.setState({ habits: [...DEMO_DATA.habits] });
+                        app.render();
+                      }
+                    }
+                  }}
+                />
+                <button class="btn btn-primary btn-small" style="min-width:40px" onclick=${async () => {
+                  if (newHabitName.trim()) {
+                    const result = await dataService.addHabit(newHabitName);
+                    if (result) {
+                      newHabitName = '';
+                      if (dataService.isDemo) app.setState({ habits: [...DEMO_DATA.habits] });
+                      app.render();
+                    }
+                  }
+                }}>+</button>
+              </div>
+            ` : ''}
+            ${!habits || habits.length === 0 ? html`
+              <div style="text-align:center;padding:12px;color:var(--text-secondary);font-size:13px">
+                Noch keine Gewohnheiten. Tippe "Bearbeiten" um welche hinzuzufügen.
+              </div>
+            ` : ''}
+          </div>
         </div>
       `;
     }
@@ -2070,6 +2178,18 @@
     let journalAnswers = {};
 
     function JournalScreen({ dataService, onClose, type, backfillDate }) {
+      // Wenn wir im Edit-Modus sind, lade vorhandene Antworten
+      if (window._editContent && journalCurrentQuestion === 0 && Object.keys(journalAnswers).length === 0) {
+        const ec = window._editContent;
+        const questions = JOURNAL_QUESTIONS[type];
+        if (questions) {
+          questions.forEach(q => {
+            if (ec[q.key]) journalAnswers[q.key] = ec[q.key];
+          });
+        }
+        window._editContent = null;
+      }
+
       let currentQuestion = journalCurrentQuestion;
       let answers = journalAnswers;
       const questions = JOURNAL_QUESTIONS[type];
@@ -2235,7 +2355,7 @@
       const renderEntry = (entry, type) => {
         if (!entry) return '';
         const parts = formatEntryContent(entry);
-        if (!parts.length) return html`<div class="entry-text" style="color:#6B7280;font-style:italic">Keine Details</div>`;
+        if (!parts.length) return html`<div class="entry-text" style="color:var(--text-secondary);font-style:italic">Keine Details</div>`;
         return parts.map(p => html`
           <div style="margin-bottom:8px">
             <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px">${escapeHtml(p.label)}</div>
@@ -2273,7 +2393,7 @@
               <div
                 class=${'calendar-day' + (isOtherMonth ? ' other-month' : '') + (isCurrentMonth && day === today.getDate() && !isOtherMonth ? ' today' : '') + (hasEntry ? ' has-entry' : '') + (dateStr === archiveSelectedDate ? ' selected' : '')}
                 onclick=${() => !isOtherMonth && handleDayClick(dateStr)}
-                style=${dateStr === archiveSelectedDate ? 'background:#E8B86D;color:#1A1A2E;font-weight:700' : ''}
+                style=${dateStr === archiveSelectedDate ? 'background:var(--accent-light);color:var(--bg);font-weight:700' : ''}
               >
                 ${day}
               </div>
@@ -2282,13 +2402,29 @@
 
           ${archiveSelectedEntry && (archiveSelectedEntry.morning || archiveSelectedEntry.evening) ? html`
             <div class="entry-detail">
-              <div style="font-size:12px;color:#6B7280;margin-bottom:12px">${archiveSelectedDate}</div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <div style="font-size:12px;color:var(--text-secondary)">${archiveSelectedDate}</div>
+              </div>
               ${archiveSelectedEntry.morning ? html`
-                <div class="entry-section-title">🌅 Morgens</div>
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                  <div class="entry-section-title">🌅 Morgens</div>
+                  <button style="background:none;border:none;color:var(--accent-light);cursor:pointer;font-size:12px;padding:4px" onclick=${() => {
+                    window._backfillDate = archiveSelectedDate;
+                    window._editContent = archiveSelectedEntry.morning;
+                    if (window._appNavigate) window._appNavigate('journal', 'morning');
+                  }}>✎ Bearbeiten</button>
+                </div>
                 ${renderEntry(archiveSelectedEntry.morning, 'morning')}
               ` : ''}
               ${archiveSelectedEntry.evening ? html`
-                <div class="entry-section-title">🌙 Abends</div>
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                  <div class="entry-section-title">🌙 Abends</div>
+                  <button style="background:none;border:none;color:var(--accent-light);cursor:pointer;font-size:12px;padding:4px" onclick=${() => {
+                    window._backfillDate = archiveSelectedDate;
+                    window._editContent = archiveSelectedEntry.evening;
+                    if (window._appNavigate) window._appNavigate('journal', 'evening');
+                  }}>✎ Bearbeiten</button>
+                </div>
                 ${renderEntry(archiveSelectedEntry.evening, 'evening')}
               ` : ''}
             </div>
@@ -2378,7 +2514,7 @@
           </button>
 
           ${reflectionSaved ? html`
-            <div style="text-align:center;padding:16px;color:#16a34a;font-weight:600">
+            <div style="text-align:center;padding:16px;color:var(--success);font-weight:600">
               Gespeichert für ${weekLabel}
             </div>
           ` : ''}
@@ -2499,7 +2635,7 @@
               </div>
 
               ${!FEEDBACK_GAS_URL ? html`
-                <div style="margin-top:12px;padding:8px 12px;background:#FFF3CD;color:#856404;border-radius:8px;font-size:12px">
+                <div style="margin-top:12px;padding:8px 12px;background:var(--bg-alt);color:var(--accent-light);border-radius:8px;font-size:12px;border:1px solid var(--border)">
                   ⚠️ Feedback-Endpoint noch nicht konfiguriert. Feedback wird in die Console geloggt.
                 </div>
               ` : ''}
@@ -2549,7 +2685,7 @@
             <div class="settings-title">Konto</div>
             <div class="settings-item">
               <div class="settings-label">${escapeHtml(userEmail)}</div>
-              <div style="font-size:12px;color:#6B7280">${dataService.isDemo ? '🟡 Lokal' : '🟢 Cloud'}</div>
+              <div style="font-size:12px;color:var(--text-secondary)">${dataService.isDemo ? '🟡 Lokal' : '🟢 Cloud'}</div>
             </div>
             ${dataService.isDemo ? html`
               <div class="settings-item" onclick=${() => onNavigate('supabase-setup')} style="cursor:pointer">
@@ -2597,7 +2733,7 @@
             <div class="settings-title">Über die App</div>
             <div class="settings-item">
               <div class="settings-label">Version</div>
-              <div class="settings-value">1.5.0</div>
+              <div class="settings-value">1.6.0</div>
             </div>
             <div class="settings-item">
               <div class="settings-label">Entwickelt mit ❤️</div>
