@@ -1,14 +1,17 @@
 // sw.js — Service Worker für 6-Minuten-Tagebuch PWA
-// Phase 1 Quick Wins: CDN precache, Supabase-JS cache, POST/401 fix, Update-Notification
+// v1.2.0: Stale-while-revalidate für eigene Assets, CDN precache, POST/401 fix
 
-const CACHE_VERSION = 'v1.1.0';
+const CACHE_VERSION = 'v1.2.0';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `runtime-${CACHE_VERSION}`;
 
 const STATIC_ASSETS = [
   '/',
   '/index.html',
-  '/manifest.json'
+  '/manifest.json',
+  '/icon-180.png',
+  '/icon-192.png',
+  '/icon-512.png'
 ];
 
 // CDN-URLs die beim Install vorgeladen werden
@@ -29,21 +32,19 @@ self.addEventListener('install', (event) => {
         return cache.addAll(STATIC_ASSETS);
       })
       .then(() => {
-        // CDN-Assets separat cachen — bei Fehler trotzdem installieren
+        // CDN-Assets separat — bei Fehler trotzdem installieren
         return caches.open(STATIC_CACHE).then(cache => {
           return Promise.allSettled(
             CDN_ASSETS.map(url =>
               fetch(url).then(resp => {
-                if (resp.ok) {
-                  cache.put(url, resp);
-                  console.log('[SW] Cached CDN:', url.substring(0, 60));
-                }
-              }).catch(err => console.warn('[SW] CDN cache skip:', url.substring(0, 40), err.message))
+                if (resp.ok) cache.put(url, resp);
+              }).catch(() => {})
             )
           );
         });
       })
-      // Nicht sofort skipWaiting — warte auf Message vom Client
+      // Sofort aktivieren damit alte Caches weggeräumt werden
+      .then(() => self.skipWaiting())
       .catch(err => console.error('[SW] Install failed:', err))
   );
 });
@@ -62,13 +63,18 @@ self.addEventListener('activate', (event) => {
           })
       ))
       .then(() => self.clients.claim())
+      .then(() => {
+        // Alle Clients über Update informieren
+        return self.clients.matchAll({ type: 'window' }).then(clients => {
+          clients.forEach(client => client.postMessage({ type: 'SW_UPDATED', version: CACHE_VERSION }));
+        });
+      })
   );
 });
 
 // ================== MESSAGE HANDLER ==================
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
-    console.log('[SW] Skip waiting requested by client');
     self.skipWaiting();
   }
 });
@@ -80,18 +86,17 @@ self.addEventListener('fetch', (event) => {
 
   if (!url.protocol.startsWith('http')) return;
 
-  // Mutations (POST/PUT/DELETE/PATCH) NIEMALS cachen — immer direkt ans Netzwerk
+  // Mutations (POST/PUT/DELETE/PATCH) NIEMALS cachen
   if (request.method !== 'GET') {
     event.respondWith(fetch(request).catch(() =>
-      new Response(JSON.stringify({ error: 'Offline — Aktion nicht möglich' }), {
-        status: 503,
-        headers: { 'Content-Type': 'application/json' }
+      new Response(JSON.stringify({ error: 'Offline' }), {
+        status: 503, headers: { 'Content-Type': 'application/json' }
       })
     ));
     return;
   }
 
-  // Supabase API: Network-first (immer aktuelle Daten), aber 401/403 nicht cachen
+  // Supabase API: Network-first, 401/403 nicht cachen
   if (url.hostname.includes('supabase')) {
     event.respondWith(networkFirst(request, RUNTIME_CACHE));
     return;
@@ -103,9 +108,10 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Eigene Assets: Cache-first mit Network-Fallback
+  // Eigene Assets: STALE-WHILE-REVALIDATE
+  // Liefert sofort aus Cache, holt aber im Hintergrund die neueste Version
   if (url.origin === self.location.origin) {
-    event.respondWith(cacheFirst(request, STATIC_CACHE));
+    event.respondWith(staleWhileRevalidate(request, STATIC_CACHE));
     return;
   }
 
@@ -119,7 +125,6 @@ async function cacheFirst(request, cacheName) {
   try {
     const cached = await caches.match(request);
     if (cached) return cached;
-
     const response = await fetch(request);
     if (response.ok) {
       const cache = await caches.open(cacheName);
@@ -129,19 +134,14 @@ async function cacheFirst(request, cacheName) {
   } catch (err) {
     const cached = await caches.match(request);
     if (cached) return cached;
-    return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
+    return new Response('Offline', { status: 503 });
   }
 }
 
 async function networkFirst(request, cacheName) {
   try {
     const response = await fetch(request);
-
-    // Auth-Fehler NICHT cachen — sonst zeigt Offline immer 401
-    if (response.status === 401 || response.status === 403) {
-      return response;
-    }
-
+    if (response.status === 401 || response.status === 403) return response;
     if (response.ok) {
       const cache = await caches.open(cacheName);
       cache.put(request, response.clone());
@@ -151,8 +151,24 @@ async function networkFirst(request, cacheName) {
     const cached = await caches.match(request);
     if (cached) return cached;
     return new Response(JSON.stringify({ error: 'Offline' }), {
-      status: 503,
-      headers: { 'Content-Type': 'application/json' }
+      status: 503, headers: { 'Content-Type': 'application/json' }
     });
   }
+}
+
+async function staleWhileRevalidate(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(request);
+
+  // Im Hintergrund die neueste Version holen
+  const fetchPromise = fetch(request).then(response => {
+    if (response.ok) {
+      cache.put(request, response.clone());
+    }
+    return response;
+  }).catch(() => cached);
+
+  // Wenn Cache vorhanden: sofort liefern, Hintergrund-Update läuft
+  // Wenn kein Cache: auf Netzwerk warten
+  return cached || fetchPromise;
 }
