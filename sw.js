@@ -1,7 +1,7 @@
 // sw.js — Service Worker für 6-Minuten-Tagebuch PWA
-// v1.6.0: Phase 4 UX — Dark Mode Vars, Freeze-Confirm, Habits CRUD, Entry-Edit
+// v1.7.0: Phase 5 Platform Hardening — SW Backoff, Update-Banner, Race Conditions, Token-Refresh
 
-const CACHE_VERSION = 'v1.6.0';
+const CACHE_VERSION = 'v1.7.0';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `runtime-${CACHE_VERSION}`;
 
@@ -43,8 +43,8 @@ self.addEventListener('install', (event) => {
           );
         });
       })
-      // Sofort aktivieren damit alte Caches weggeräumt werden
-      .then(() => self.skipWaiting())
+      // NICHT sofort skipWaiting — warten auf User-Bestätigung via Message
+      .then(() => console.log('[SW] Install complete, waiting for SKIP_WAITING message'))
       .catch(err => console.error('[SW] Install failed:', err))
   );
 });

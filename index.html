@@ -22,6 +22,9 @@
       --accent: #1A1A2E;
       --accent-light: #E8B86D;
       --success: #16a34a;
+      --error: #DC2626;
+      --error-bg: #FEF2F2;
+      --error-border: #FECACA;
       --shadow: rgba(0, 0, 0, 0.08);
     }
 
@@ -36,6 +39,9 @@
         --accent: #E8B86D;
         --accent-light: #E8B86D;
         --success: #22c55e;
+        --error: #F87171;
+        --error-bg: #3B1A1A;
+        --error-border: #5C2626;
         --shadow: rgba(0, 0, 0, 0.3);
       }
     }
@@ -50,6 +56,9 @@
       --accent: #E8B86D;
       --accent-light: #E8B86D;
       --success: #22c55e;
+      --error: #F87171;
+      --error-bg: #3B1A1A;
+      --error-border: #5C2626;
       --shadow: rgba(0, 0, 0, 0.3);
     }
 
@@ -1391,13 +1400,22 @@
       async _withRetry(fn) {
         try {
           const result = await fn();
-          if (result.error?.message?.includes('JWT expired')) {
-            await this.supabaseClient.auth.refreshSession();
+          const errMsg = result.error?.message || '';
+          // Robustere Auth-Fehler-Erkennung (nicht nur String-Match)
+          const isAuthError = result.error?.status === 401 || result.error?.status === 403
+            || errMsg.includes('JWT') || errMsg.includes('token') || errMsg.includes('session')
+            || errMsg.includes('invalid_grant') || errMsg.includes('access_token');
+          if (isAuthError) {
+            const { error: refreshError } = await this.supabaseClient.auth.refreshSession();
+            if (refreshError) {
+              console.warn('[Auth] Session-Refresh fehlgeschlagen');
+              return result; // Original-Fehler zurückgeben
+            }
             return await fn();
           }
           return result;
         } catch (e) {
-          console.error('DB operation failed:', e);
+          console.error('[DB] Operation fehlgeschlagen');
           return { data: null, error: e };
         }
       }
@@ -2233,7 +2251,12 @@
         <div class="screen journal-screen active">
           <div class="journal-header">
             <div class="journal-title">${type === 'morning' ? '🌅 Morgens' : '🌙 Abends'}${backfillDate ? html` <span style="font-size:14px;color:var(--text-secondary);font-weight:400">— ${backfillDate}</span>` : ''}</div>
-            <div class="journal-close" onclick=${onClose}>✕</div>
+            <div class="journal-close" onclick=${() => {
+              const hasContent = Object.values(journalAnswers).some(v =>
+                Array.isArray(v) ? v.some(i => i && i.trim()) : (v && v.trim()));
+              if (hasContent && !confirm('Eintrag wirklich schließen? Nicht gespeicherte Änderungen gehen verloren.')) return;
+              onClose();
+            }}>✕</div>
           </div>
 
           <div class="journal-progress">
@@ -2259,6 +2282,12 @@
                       journalAnswers[question.key][idx] = e.target.value;
                     } else {
                       journalAnswers[question.key] = e.target.value;
+                    }
+                  }}
+                  onkeydown=${e => {
+                    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                      e.preventDefault();
+                      handleNext();
                     }
                   }}
                   onblur=${async e => {
@@ -2344,10 +2373,16 @@
       const today = new Date();
       const isCurrentMonth = archiveViewMonth.getMonth() === today.getMonth() && archiveViewMonth.getFullYear() === today.getFullYear();
 
+      let _archiveRequestId = 0;
       const handleDayClick = async (dateStr) => {
         if (!dateStr) return;
         archiveSelectedDate = dateStr;
-        archiveSelectedEntry = await dataService.getEntries(dateStr);
+        archiveSelectedEntry = null;
+        app.render(); // Sofort UI updaten (loading state)
+        const requestId = ++_archiveRequestId;
+        const entry = await dataService.getEntries(dateStr);
+        if (requestId !== _archiveRequestId) return; // Veralteter Request → ignorieren
+        archiveSelectedEntry = entry;
         app.render();
       };
 
@@ -2399,6 +2434,12 @@
               </div>
             `)}
           </div>
+
+          ${archiveSelectedDate && !archiveSelectedEntry && _archiveRequestId > 0 ? html`
+            <div class="entry-detail" style="text-align:center;padding:20px">
+              <div style="color:var(--text-secondary);font-size:14px">Lade Eintrag…</div>
+            </div>
+          ` : ''}
 
           ${archiveSelectedEntry && (archiveSelectedEntry.morning || archiveSelectedEntry.evening) ? html`
             <div class="entry-detail">
@@ -2733,7 +2774,7 @@
             <div class="settings-title">Über die App</div>
             <div class="settings-item">
               <div class="settings-label">Version</div>
-              <div class="settings-value">1.6.0</div>
+              <div class="settings-value">1.7.0</div>
             </div>
             <div class="settings-item">
               <div class="settings-label">Entwickelt mit ❤️</div>
@@ -2761,30 +2802,30 @@
           </div>
 
           <div class="settings-section" style="margin-top:16px">
-            <div class="settings-title" style="color:#DC2626">Gefahrenzone</div>
+            <div class="settings-title" style="color:var(--error)">Gefahrenzone</div>
             ${!deleteConfirmOpen ? html`
-              <button class="btn" style="width:100%;background:#FEE2E2;color:#DC2626;border:1px solid #FECACA;font-weight:600" onclick=${() => { deleteConfirmOpen = true; app.render(); }}>
+              <button class="btn" style="width:100%;background:var(--error-bg);color:var(--error);border:1px solid var(--error-border);font-weight:600" onclick=${() => { deleteConfirmOpen = true; app.render(); }}>
                 🗑️ Alle meine Daten löschen
               </button>
             ` : html`
-              <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:12px;padding:16px">
-                <div style="font-size:14px;font-weight:600;color:#DC2626;margin-bottom:8px">Bist du sicher?</div>
-                <div style="font-size:13px;color:#7F1D1D;margin-bottom:12px">
+              <div style="background:var(--error-bg);border:1px solid var(--error-border);border-radius:12px;padding:16px">
+                <div style="font-size:14px;font-weight:600;color:var(--error);margin-bottom:8px">Bist du sicher?</div>
+                <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">
                   ${dataService.isDemo
                     ? 'Alle lokalen Tagebuch-Einträge, Habits und Reflektionen werden unwiderruflich gelöscht.'
                     : 'Alle Einträge, Habits und Reflektionen werden unwiderruflich aus der Cloud gelöscht. Dein Konto bleibt bestehen, aber alle Inhalte sind weg.'}
                 </div>
                 <div style="font-size:12px;color:#9CA3AF;margin-bottom:8px">Tippe <strong>LÖSCHEN</strong> zur Bestätigung:</div>
-                <input type="text" style="width:100%;padding:10px;border:1px solid #FECACA;border-radius:8px;font-size:14px;margin-bottom:12px;box-sizing:border-box"
+                <input type="text" style="width:100%;padding:10px;border:1px solid var(--error-border);border-radius:8px;font-size:14px;margin-bottom:12px;box-sizing:border-box;background:var(--bg);color:var(--text)"
                   placeholder="LÖSCHEN"
                   value=${deleteConfirmText}
                   oninput=${e => { deleteConfirmText = e.target.value; app.render(); }}
                 />
                 <div style="display:flex;gap:8px">
-                  <button class="btn" style="flex:1;background:#E5E7EB;color:#374151;border:none" onclick=${() => { deleteConfirmOpen = false; deleteConfirmText = ''; app.render(); }}>
+                  <button class="btn" style="flex:1;background:var(--bg-alt);color:var(--text);border:none" onclick=${() => { deleteConfirmOpen = false; deleteConfirmText = ''; app.render(); }}>
                     Abbrechen
                   </button>
-                  <button class="btn" style="flex:1;background:${deleteConfirmText === 'LÖSCHEN' ? '#DC2626' : '#E5E7EB'};color:${deleteConfirmText === 'LÖSCHEN' ? '#fff' : '#9CA3AF'};border:none;font-weight:600"
+                  <button class="btn" style="flex:1;background:${deleteConfirmText === 'LÖSCHEN' ? 'var(--error)' : 'var(--bg-alt)'};color:${deleteConfirmText === 'LÖSCHEN' ? '#fff' : 'var(--text-secondary)'};border:none;font-weight:600"
                     disabled=${deleteConfirmText !== 'LÖSCHEN' || deleteInProgress}
                     onclick=${handleDeleteAccount}>
                     ${deleteInProgress ? 'Lösche...' : 'Endgültig löschen'}
@@ -2931,6 +2972,15 @@
 
       handleNavigate = async (screen, extra = null) => {
         const { dataService } = this.state;
+
+        // State-Cleanup: bei jedem Screenwechsel alte States zurücksetzen
+        if (this.state.screen === 'journal' && screen !== 'journal') {
+          journalCurrentQuestion = 0;
+          journalAnswers = {};
+          window._editContent = null;
+        }
+        freezeConfirmOpen = false;
+        habitsEditMode = false;
 
         if (screen === 'dashboard') {
           const entry = await dataService.getEntries();
@@ -3146,24 +3196,36 @@
         .then(reg => {
           console.log('[App] SW registered:', reg.scope);
 
-          // Regelmäßig auf Updates prüfen (alle 60s)
-          setInterval(() => reg.update().catch(() => {}), 60000);
+          // Smart Update-Check: Visibility-API + Exponential Backoff (statt 60s Polling)
+          let swUpdateInterval = 3600000; // 1h Basis
+          let swFailures = 0;
+          const smartSWUpdate = () => {
+            if (document.hidden) return;
+            reg.update().then(() => { swFailures = 0; swUpdateInterval = 3600000; })
+              .catch(() => { swFailures++; swUpdateInterval = Math.min(3600000 * Math.pow(2, swFailures), 21600000); });
+          };
+          document.addEventListener('visibilitychange', () => { if (!document.hidden) smartSWUpdate(); });
+          setInterval(smartSWUpdate, 14400000); // Fallback alle 4h
 
-          // Update-Notification wenn neue Version bereit
+          // Update-Banner wenn neue Version bereit (kein Auto-Reload)
+          let updateBannerShown = false;
           reg.addEventListener('updatefound', () => {
             const newSW = reg.installing;
             if (!newSW) return;
             newSW.addEventListener('statechange', () => {
-              if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
-                // Neue Version verfügbar — User informieren
-                if (typeof showToast === 'function') {
-                  showToast('Neue Version verfügbar! Seite neu laden.', 'info');
-                }
-                // Auto-Reload nach 3 Sekunden
-                setTimeout(() => {
+              if (newSW.state === 'installed' && navigator.serviceWorker.controller && !updateBannerShown) {
+                updateBannerShown = true;
+                // Update-Banner anzeigen statt Auto-Reload
+                const banner = document.createElement('div');
+                banner.id = 'sw-update-banner';
+                banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:var(--accent-light,#E8B86D);color:#1A1A2E;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.2)';
+                banner.innerHTML = '<span>Neue Version verfügbar!</span><button onclick="this.parentElement.querySelector(\'[data-action=reload]\').click()" style="background:#1A1A2E;color:#fff;border:none;padding:6px 14px;border-radius:8px;font-size:13px;cursor:pointer;font-weight:600">Jetzt laden</button>';
+                banner.querySelector('button').setAttribute('data-action', 'reload');
+                banner.querySelector('[data-action=reload]').addEventListener('click', () => {
                   newSW.postMessage({ type: 'SKIP_WAITING' });
                   location.reload();
-                }, 3000);
+                });
+                document.body.prepend(banner);
               }
             });
           });
