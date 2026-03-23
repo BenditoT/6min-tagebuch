@@ -1174,7 +1174,9 @@
 
     const MILESTONES = [7, 14, 30, 60, 100, 365];
 
-    const DEMO_DATA = {
+    // Demo-Daten: Lade aus localStorage oder verwende Defaults
+    const DEMO_STORAGE_KEY = '6min_demo_data';
+    const DEMO_DEFAULTS = {
       entries: {},
       habits: [
         { id: 1, name: 'Meditation', createdAt: Date.now() },
@@ -1186,6 +1188,30 @@
       freezesRemaining: 2,
       frozenDates: {}
     };
+
+    function loadDemoData() {
+      try {
+        const stored = localStorage.getItem(DEMO_STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          // Merge mit Defaults (falls neue Felder hinzukommen)
+          return { ...DEMO_DEFAULTS, ...parsed };
+        }
+      } catch (e) {
+        console.warn('[Demo] localStorage read failed:', e.message);
+      }
+      return { ...DEMO_DEFAULTS };
+    }
+
+    function saveDemoData() {
+      try {
+        localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(DEMO_DATA));
+      } catch (e) {
+        console.warn('[Demo] localStorage write failed:', e.message);
+      }
+    }
+
+    const DEMO_DATA = loadDemoData();
 
     // ============================================================================
     // DATA SERVICE
@@ -1339,14 +1365,40 @@
         }
       }
 
+      // Validiere Journal-Content Struktur und Länge
+      _validateContent(content) {
+        if (!content || typeof content !== 'object') return false;
+        const MAX_LEN = 2500;
+        const arrayFields = ['grateful', 'wonderful', 'great_things'];
+        const stringFields = ['affirmation', 'learned', 'improve'];
+        for (const f of arrayFields) {
+          if (content[f] && Array.isArray(content[f])) {
+            for (const item of content[f]) {
+              if (typeof item !== 'string' || item.length > MAX_LEN) return false;
+            }
+          }
+        }
+        for (const f of stringFields) {
+          if (content[f] && (typeof content[f] !== 'string' || content[f].length > MAX_LEN)) return false;
+        }
+        return true;
+      }
+
       async saveEntry(date, type, content) {
         const targetDate = date || this.getTodayDate();
+
+        // Validierung vor Speicherung
+        if (content && typeof content === 'object' && !this._validateContent(content)) {
+          console.warn('[Save] Content validation failed');
+          return false;
+        }
 
         if (this.isDemo) {
           if (!DEMO_DATA.entries[targetDate]) {
             DEMO_DATA.entries[targetDate] = { morning: null, evening: null };
           }
           DEMO_DATA.entries[targetDate][type] = content;
+          saveDemoData();
           return true;
         }
 
@@ -1425,24 +1477,26 @@
           } else {
             delete DEMO_DATA.habitTracks[key];
           }
+          saveDemoData();
           return !DEMO_DATA.habitTracks[key];
         }
 
         if (!this.supabaseClient) return false;
 
         try {
-          const exists = DEMO_DATA.habitTracks[key];
+          // Prüfe aktuellen Status in der DB (nicht in DEMO_DATA!)
+          const exists = await this.getHabitStatus(habitId, date);
           if (exists) {
-            await this.supabaseClient
+            await this._withRetry(async () => await this.supabaseClient
               .from('habit_tracks')
               .delete()
               .eq('user_id', this.userId)
               .eq('habit_id', habitId)
-              .eq('track_date', date);
+              .eq('track_date', date));
           } else {
-            await this.supabaseClient
+            await this._withRetry(async () => await this.supabaseClient
               .from('habit_tracks')
-              .insert({ user_id: this.userId, habit_id: habitId, track_date: date });
+              .insert({ user_id: this.userId, habit_id: habitId, track_date: date }));
           }
           return !exists;
         } catch (e) {
@@ -1453,7 +1507,22 @@
 
       async getHabitStatus(habitId, date) {
         const key = `${date}_${habitId}`;
-        return this.isDemo ? !!DEMO_DATA.habitTracks[key] : false;
+        if (this.isDemo) return !!DEMO_DATA.habitTracks[key];
+
+        if (!this.supabaseClient) return false;
+        try {
+          const result = await this._withRetry(async () => await this.supabaseClient
+            .from('habit_tracks')
+            .select('id')
+            .eq('user_id', this.userId)
+            .eq('habit_id', habitId)
+            .eq('track_date', date)
+            .maybeSingle());
+          return !!result.data;
+        } catch (e) {
+          console.error('getHabitStatus error:', e);
+          return false;
+        }
       }
 
       getTodayDate() {
@@ -1842,6 +1911,7 @@
                     if (!DEMO_DATA.frozenDates) DEMO_DATA.frozenDates = {};
                     DEMO_DATA.frozenDates[todayDate] = true;
                     DEMO_DATA.freezesRemaining = (DEMO_DATA.freezesRemaining ?? 2) - 1;
+                    saveDemoData();
                   }
                   showToast('Streak-Freeze aktiviert!', 'info');
                   app.render();
@@ -1885,8 +1955,8 @@
               <div class="habits-list">
                 ${habits.map(habit => html`
                   <div key=${habit.id} class="habit-item">
-                    <div class="habit-checkbox checked" onclick=${() => {
-                      dataService.toggleHabit(habit.id, todayDate);
+                    <div class="habit-checkbox checked" onclick=${async () => {
+                      await dataService.toggleHabit(habit.id, todayDate);
                       app.render();
                     }}>
                       <span style="font-size: 12px;">✓</span>
@@ -2199,6 +2269,7 @@
       const handleSave = async () => {
         if (dataService.isDemo) {
           DEMO_DATA.weeklyReflections[reflectionWeek] = { ...reflectionAnswers };
+          saveDemoData();
         }
         reflectionSaved = true;
         showToast('Wochenreflexion gespeichert ✓', 'success');
@@ -2413,7 +2484,7 @@
             <div class="settings-title">Über die App</div>
             <div class="settings-item">
               <div class="settings-label">Version</div>
-              <div class="settings-value">1.3.0</div>
+              <div class="settings-value">1.4.0</div>
             </div>
             <div class="settings-item">
               <div class="settings-label">Entwickelt mit ❤️</div>
