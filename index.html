@@ -1107,6 +1107,19 @@
     const html = htm.bind(h);
 
     // ============================================================================
+    // GLOBALE ERROR HANDLER
+    // ============================================================================
+    window.onerror = (msg, src, line, col, err) => {
+      console.error('[App Error]', msg, src, line);
+      try { showToast && showToast('Ein Fehler ist aufgetreten', 'error'); } catch(_) {}
+      return false;
+    };
+    window.addEventListener('unhandledrejection', (event) => {
+      console.error('[Unhandled Promise]', event.reason);
+      try { showToast && showToast('Netzwerk- oder Verarbeitungsfehler', 'error'); } catch(_) {}
+    });
+
+    // ============================================================================
     // THEME MANAGEMENT
     // ============================================================================
 
@@ -1949,13 +1962,17 @@
       };
 
       const saveAndClose = async () => {
-        const success = await dataService.saveEntry(backfillDate || null, type, journalAnswers);
-        if (success) {
-          showToast('Eintrag gespeichert ✓', 'success');
-          triggerConfetti();
-          setTimeout(() => onClose(), 1500);
-        } else {
-          showToast('Speichern fehlgeschlagen. Bitte prüfe deine Verbindung und versuche es erneut.', 'error');
+        try {
+          const success = await dataService.saveEntry(backfillDate || null, type, journalAnswers);
+          if (success) {
+            showToast('Eintrag gespeichert ✓', 'success');
+            triggerConfetti();
+            setTimeout(() => onClose(), 1500);
+          } else {
+            showToast('Speichern fehlgeschlagen. Bitte prüfe deine Verbindung und versuche es erneut.', 'error');
+          }
+        } catch (err) {
+          showToast('Fehler beim Speichern: ' + (err.message || 'Unbekannter Fehler'), 'error');
         }
       };
 
@@ -1996,7 +2013,12 @@
                   onblur=${async e => {
                     // Auto-Save bei Fokus-Verlust
                     if (e.target.value.trim()) {
-                      await dataService.saveEntry(null, type, journalAnswers);
+                      try {
+                        const saved = await dataService.saveEntry(backfillDate || null, type, journalAnswers);
+                        if (!saved) showToast('Auto-Speichern fehlgeschlagen', 'error');
+                      } catch (err) {
+                        showToast('Speichern fehlgeschlagen — Eingaben bleiben lokal erhalten', 'error');
+                      }
                     }
                   }}
                 ></textarea>
@@ -2022,6 +2044,12 @@
     let archiveViewMonth = new Date();
     let archiveSelectedDate = null;
     let archiveSelectedEntry = null;
+
+    // XSS-Schutz: HTML-Entities escapen bevor User-Content gerendert wird
+    function escapeHtml(text) {
+      const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;' };
+      return String(text).replace(/[&<>"']/g, m => map[m]);
+    }
 
     function formatEntryContent(content) {
       if (!content || typeof content !== 'object') return [];
@@ -2079,8 +2107,8 @@
         if (!parts.length) return html`<div class="entry-text" style="color:#6B7280;font-style:italic">Keine Details</div>`;
         return parts.map(p => html`
           <div style="margin-bottom:8px">
-            <div style="font-size:12px;font-weight:600;color:#1A1A2E;margin-bottom:4px">${p.label}</div>
-            ${p.items.map(item => html`<div style="font-size:14px;color:#4B5563;padding:2px 0">• ${item}</div>`)}
+            <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px">${escapeHtml(p.label)}</div>
+            ${p.items.map(item => html`<div style="font-size:14px;color:var(--text-secondary);padding:2px 0">• ${escapeHtml(item)}</div>`)}
           </div>
         `);
       };
@@ -2385,7 +2413,7 @@
             <div class="settings-title">Über die App</div>
             <div class="settings-item">
               <div class="settings-label">Version</div>
-              <div class="settings-value">1.1.0</div>
+              <div class="settings-value">1.3.0</div>
             </div>
             <div class="settings-item">
               <div class="settings-label">Entwickelt mit ❤️</div>

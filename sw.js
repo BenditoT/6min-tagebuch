@@ -1,7 +1,7 @@
 // sw.js — Service Worker für 6-Minuten-Tagebuch PWA
 // v1.2.0: Stale-while-revalidate für eigene Assets, CDN precache, POST/401 fix
 
-const CACHE_VERSION = 'v1.2.0';
+const CACHE_VERSION = 'v1.3.0';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `runtime-${CACHE_VERSION}`;
 
@@ -108,8 +108,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Eigene Assets: STALE-WHILE-REVALIDATE
-  // Liefert sofort aus Cache, holt aber im Hintergrund die neueste Version
+  // Hauptdokument (HTML): NETWORK-FIRST (verhindert Race Condition bei SPA-Updates)
+  if (request.destination === 'document' || request.mode === 'navigate') {
+    event.respondWith(networkFirst(request, STATIC_CACHE));
+    return;
+  }
+
+  // Eigene Sub-Resources (Icons, manifest, etc.): STALE-WHILE-REVALIDATE
   if (url.origin === self.location.origin) {
     event.respondWith(staleWhileRevalidate(request, STATIC_CACHE));
     return;
@@ -125,8 +130,9 @@ async function cacheFirst(request, cacheName) {
   try {
     const cached = await caches.match(request);
     if (cached) return cached;
-    const response = await fetch(request);
-    if (response.ok) {
+    const response = await fetch(request, { redirect: 'follow' });
+    // Nur finale Responses cachen (keine 302-Redirects)
+    if (response.status === 200) {
       const cache = await caches.open(cacheName);
       cache.put(request, response.clone());
     }
