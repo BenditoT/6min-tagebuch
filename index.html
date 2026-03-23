@@ -910,6 +910,37 @@
       }
     }
 
+    /* Feedback Modal */
+    .feedback-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5); display: flex; align-items: center;
+      justify-content: center; z-index: 10000;
+    }
+    .feedback-modal {
+      background: var(--card, #fff); border-radius: 16px; padding: 24px;
+      max-width: 420px; width: 90%; max-height: 85vh; overflow-y: auto;
+      box-shadow: 0 20px 25px rgba(0,0,0,0.15); color: var(--text, #333);
+    }
+    .feedback-header { font-size: 20px; font-weight: 700; margin-bottom: 16px; }
+    .feedback-form-group { margin-bottom: 16px; }
+    .feedback-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--text-secondary, #666); }
+    .feedback-categories { display: flex; flex-wrap: wrap; gap: 8px; }
+    .feedback-cat-btn {
+      padding: 8px 12px; border: 1px solid var(--border, #ddd); background: var(--card, #fff);
+      border-radius: 8px; cursor: pointer; font-size: 13px; color: var(--text, #333); transition: all 0.2s;
+    }
+    .feedback-cat-btn.active { background: #E8B86D; color: #1A1A2E; border-color: #E8B86D; font-weight: 600; }
+    .feedback-stars { display: flex; gap: 6px; }
+    .feedback-star { font-size: 28px; cursor: pointer; opacity: 0.3; transition: opacity 0.2s; }
+    .feedback-star.active { opacity: 1; }
+    .feedback-textarea {
+      width: 100%; min-height: 80px; padding: 12px; border: 1px solid var(--border, #ddd);
+      border-radius: 8px; font-family: inherit; font-size: 14px; resize: vertical;
+      box-sizing: border-box; background: var(--bg, #fff); color: var(--text, #333);
+    }
+    .feedback-counter { font-size: 11px; color: var(--text-secondary, #999); margin-top: 4px; text-align: right; }
+    .feedback-actions { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
+
     /* Supabase Setup Modal */
     .modal-overlay {
       position: fixed;
@@ -1768,7 +1799,6 @@
             </div>
           </div>
 
-          ${allDone ? html`
           ${streak > 0 && !allDone ? html`
             <div style="display:flex;justify-content:space-between;align-items:center;background:var(--card,#FFFFFF);padding:12px 16px;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,0.06)">
               <div style="font-size:13px;color:#6B7280">
@@ -1787,6 +1817,8 @@
               ` : ''}
             </div>
           ` : ''}
+
+          ${allDone ? html`
             <div style="text-align: center; padding: 24px; background: #F3F4F6; border-radius: 16px; font-size: 18px; font-weight: 600; color: #1A1A2E;">
               🎉 Alles erledigt heute!
             </div>
@@ -1870,14 +1902,18 @@
       return d.getFullYear() + '-W' + String(1 + Math.round(((d - week1) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7)).padStart(2, '0');
     }
 
+    // Journal-State (Module-Scope, damit sie beim Re-Render erhalten bleiben)
+    let journalCurrentQuestion = 0;
+    let journalAnswers = {};
+
     function JournalScreen({ dataService, onClose, type, backfillDate }) {
-      let currentQuestion = 0;
-      let answers = {};
+      let currentQuestion = journalCurrentQuestion;
+      let answers = journalAnswers;
       const questions = JOURNAL_QUESTIONS[type];
 
       const handleNext = async () => {
         if (currentQuestion < questions.length - 1) {
-          currentQuestion++;
+          journalCurrentQuestion++;
           app.render();
         } else {
           await saveAndClose();
@@ -1886,7 +1922,7 @@
 
       const handleSkip = () => {
         if (currentQuestion < questions.length - 1) {
-          currentQuestion++;
+          journalCurrentQuestion++;
           app.render();
         } else {
           onClose();
@@ -1894,7 +1930,7 @@
       };
 
       const saveAndClose = async () => {
-        const success = await dataService.saveEntry(backfillDate || null, type, answers);
+        const success = await dataService.saveEntry(backfillDate || null, type, journalAnswers);
         if (success) {
           showToast('Eintrag gespeichert ✓', 'success');
           triggerConfetti();
@@ -1930,19 +1966,19 @@
                   maxlength=${500}
                   oninput=${e => {
                     if (question.count > 1) {
-                      if (!answers[question.key]) answers[question.key] = [];
-                      answers[question.key][idx] = e.target.value;
+                      if (!journalAnswers[question.key]) journalAnswers[question.key] = [];
+                      journalAnswers[question.key][idx] = e.target.value;
                     } else {
-                      answers[question.key] = e.target.value;
+                      journalAnswers[question.key] = e.target.value;
                     }
                   }}
                   onblur=${async e => {
                     // Auto-Save bei Fokus-Verlust
                     if (e.target.value.trim()) {
-                      await dataService.saveEntry(null, type, answers);
+                      await dataService.saveEntry(null, type, journalAnswers);
                     }
                   }}
-                >${question.count > 1 ? (answers[question.key]?.[idx] || '') : (answers[question.key] || '')}</textarea>
+                >${question.count > 1 ? (journalAnswers[question.key]?.[idx] || '') : (journalAnswers[question.key] || '')}</textarea>
               `)}
             </div>
           </div>
@@ -2170,6 +2206,129 @@
     }
 
     // ============================================================================
+    // COMPONENT: Feedback Modal
+    // ============================================================================
+
+    // GAS Web-App URL — ersetze nach Deployment des Google Apps Scripts
+    const FEEDBACK_GAS_URL = '';  // TODO: GAS Web-App URL hier eintragen
+
+    let feedbackOpen = false;
+    let feedbackCategory = 'Verbesserung';
+    let feedbackRating = 0;
+    let feedbackMessage = '';
+    let feedbackSubmitting = false;
+    let feedbackLastSubmit = 0;
+
+    function FeedbackModal({ onClose }) {
+      const categories = ['Fehler', 'Verbesserung', 'Lob', 'Frage', 'Sonstiges'];
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (Date.now() - feedbackLastSubmit < 10000) {
+          showToast('Bitte 10 Sekunden warten', 'info');
+          return;
+        }
+        if (!feedbackMessage.trim()) {
+          showToast('Bitte eine Nachricht eingeben', 'error');
+          return;
+        }
+        feedbackSubmitting = true;
+        app.render();
+
+        try {
+          const payload = {
+            name: 'App-User',
+            category: feedbackCategory,
+            rating: feedbackRating,
+            message: feedbackMessage.substring(0, 2000),
+            page: window.location.pathname,
+            userAgent: navigator.userAgent.substring(0, 300)
+          };
+
+          if (FEEDBACK_GAS_URL) {
+            await fetch(FEEDBACK_GAS_URL, {
+              method: 'POST',
+              mode: 'no-cors',
+              body: JSON.stringify(payload)
+            });
+          } else {
+            console.log('[Feedback] Kein GAS-Endpoint konfiguriert. Payload:', payload);
+          }
+
+          feedbackLastSubmit = Date.now();
+          showToast('Danke für dein Feedback! 🙏', 'success');
+          feedbackCategory = 'Verbesserung';
+          feedbackRating = 0;
+          feedbackMessage = '';
+          feedbackOpen = false;
+          onClose();
+        } catch (err) {
+          showToast('Fehler beim Senden. Versuche es später erneut.', 'error');
+        } finally {
+          feedbackSubmitting = false;
+          app.render();
+        }
+      };
+
+      return html`
+        <div class="feedback-overlay" onclick=${(e) => { if (e.target === e.currentTarget) onClose(); }}>
+          <div class="feedback-modal">
+            <div class="feedback-header">💬 Feedback geben</div>
+            <form onsubmit=${handleSubmit}>
+              <div class="feedback-form-group">
+                <div class="feedback-label">Kategorie</div>
+                <div class="feedback-categories">
+                  ${categories.map(cat => html`
+                    <button type="button"
+                      class=${'feedback-cat-btn' + (feedbackCategory === cat ? ' active' : '')}
+                      onclick=${() => { feedbackCategory = cat; app.render(); }}>
+                      ${cat}
+                    </button>
+                  `)}
+                </div>
+              </div>
+
+              <div class="feedback-form-group">
+                <div class="feedback-label">Bewertung (optional)</div>
+                <div class="feedback-stars">
+                  ${[1,2,3,4,5].map(star => html`
+                    <span class=${'feedback-star' + (feedbackRating >= star ? ' active' : '')}
+                      onclick=${() => { feedbackRating = star; app.render(); }}>⭐</span>
+                  `)}
+                </div>
+              </div>
+
+              <div class="feedback-form-group">
+                <div class="feedback-label">Nachricht *</div>
+                <textarea class="feedback-textarea"
+                  placeholder="Was läuft gut? Was könnte besser sein?"
+                  maxlength=${2000}
+                  oninput=${e => { feedbackMessage = e.target.value; app.render(); }}
+                >${feedbackMessage}</textarea>
+                <div class="feedback-counter">${feedbackMessage.length} / 2000</div>
+              </div>
+
+              <div class="feedback-actions">
+                <button type="button" class="btn btn-secondary btn-small" onclick=${onClose}
+                  disabled=${feedbackSubmitting}>Abbrechen</button>
+                <button type="submit" class="btn btn-primary btn-small"
+                  disabled=${feedbackSubmitting}>
+                  ${feedbackSubmitting ? '⏳ Sende...' : '📤 Absenden'}
+                </button>
+              </div>
+
+              ${!FEEDBACK_GAS_URL ? html`
+                <div style="margin-top:12px;padding:8px 12px;background:#FFF3CD;color:#856404;border-radius:8px;font-size:12px">
+                  ⚠️ Feedback-Endpoint noch nicht konfiguriert. Feedback wird in die Console geloggt.
+                </div>
+              ` : ''}
+            </form>
+          </div>
+        </div>
+      `;
+    }
+
+    // ============================================================================
     // COMPONENT: Settings
     // ============================================================================
 
@@ -2209,6 +2368,20 @@
             </div>
             <div class="settings-item">
               <div class="settings-label">Entwickelt mit ❤️</div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <div class="settings-title">Hilfe</div>
+            <div class="settings-item" style="cursor:pointer" onclick=${() => {
+              feedbackOpen = true;
+              feedbackCategory = 'Verbesserung';
+              feedbackRating = 0;
+              feedbackMessage = '';
+              app.render();
+            }}>
+              <div class="settings-label">💬 Feedback geben</div>
+              <div>→</div>
             </div>
           </div>
 
@@ -2310,6 +2483,8 @@
             backfillDate: null
           });
         } else if (screen === 'journal') {
+          journalCurrentQuestion = 0;
+          journalAnswers = {};
           const backfillDate = window._backfillDate || null;
           window._backfillDate = null;
           this.setState({ screen, journalType: extra, backfillDate });
@@ -2464,6 +2639,7 @@
               </button>
             </div>
 
+            ${feedbackOpen ? html`<${FeedbackModal} onClose=${() => { feedbackOpen = false; app.render(); }} />` : ''}
             <${Toast} />
           </div>
         `;
