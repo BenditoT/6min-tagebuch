@@ -1728,19 +1728,26 @@
       }
     ];
 
-    function OnboardingScreen({ onComplete }) {
-      let currentScreen = 0;
+    // Module-Scope State für Onboarding (wird bei app.render() nicht zurückgesetzt)
+    let onboardingStep = 0;
 
+    function OnboardingScreen({ onComplete }) {
       const handleNext = () => {
-        if (currentScreen < ONBOARDING_SCREENS.length - 1) {
-          currentScreen++;
+        if (onboardingStep < ONBOARDING_SCREENS.length - 1) {
+          onboardingStep++;
           app.render();
         } else {
+          onboardingStep = 0; // Reset für nächsten Durchlauf
           onComplete();
         }
       };
 
-      const screen = ONBOARDING_SCREENS[currentScreen];
+      const handleSkip = () => {
+        onboardingStep = 0;
+        onComplete();
+      };
+
+      const screen = ONBOARDING_SCREENS[onboardingStep];
 
       return html`
         <div class="screen onboarding-screen active">
@@ -1751,12 +1758,17 @@
           </div>
           <div class="onboarding-dots">
             ${ONBOARDING_SCREENS.map((_, idx) => html`
-              <div class=${'dot ' + (idx === currentScreen ? 'active' : '')}></div>
+              <div class=${'dot ' + (idx === onboardingStep ? 'active' : '')}></div>
             `)}
           </div>
           <button class="btn btn-primary" onclick=${handleNext}>
-            ${currentScreen === ONBOARDING_SCREENS.length - 1 ? '🚀 Los geht\'s!' : 'Weiter →'}
+            ${onboardingStep === ONBOARDING_SCREENS.length - 1 ? '🚀 Los geht\'s!' : 'Weiter →'}
           </button>
+          ${onboardingStep > 0 ? html`
+            <button style="background:none;border:none;color:var(--text-secondary);padding:12px;cursor:pointer;font-size:14px" onclick=${handleSkip}>
+              Überspringen
+            </button>
+          ` : ''}
         </div>
       `;
     }
