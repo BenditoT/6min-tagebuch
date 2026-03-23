@@ -1313,6 +1313,67 @@
         this.userId = null;
       }
 
+      // ---- DSGVO Art. 17: Recht auf Löschung ----
+
+      async deleteAllUserData() {
+        if (this.isDemo) {
+          // Demo-Modus: localStorage komplett löschen
+          try {
+            localStorage.removeItem(DEMO_STORAGE_KEY);
+            localStorage.removeItem('6min_onboarding_done');
+            localStorage.removeItem('6min_theme');
+            // DEMO_DATA zurücksetzen
+            Object.keys(DEMO_DATA).forEach(k => delete DEMO_DATA[k]);
+            Object.assign(DEMO_DATA, JSON.parse(JSON.stringify(DEMO_DEFAULTS)));
+          } catch (e) {
+            console.warn('[DSGVO] Demo-Daten Löschung fehlgeschlagen');
+          }
+          return { success: true };
+        }
+
+        if (!this.supabaseClient || !this.userId) {
+          return { success: false, error: 'Nicht angemeldet' };
+        }
+
+        try {
+          // 1. Alle Habit-Tracks löschen
+          const r1 = await this._withRetry(async () =>
+            await this.supabaseClient.from('habit_tracks').delete().eq('user_id', this.userId));
+          if (r1.error) throw r1.error;
+
+          // 2. Alle Habits löschen
+          const r2 = await this._withRetry(async () =>
+            await this.supabaseClient.from('habits').delete().eq('user_id', this.userId));
+          if (r2.error) throw r2.error;
+
+          // 3. Alle Tagebuch-Einträge löschen
+          const r3 = await this._withRetry(async () =>
+            await this.supabaseClient.from('daily_entries').delete().eq('user_id', this.userId));
+          if (r3.error) throw r3.error;
+
+          // 4. Alle Wochenreflexionen löschen (falls Tabelle existiert)
+          try {
+            await this._withRetry(async () =>
+              await this.supabaseClient.from('weekly_reflections').delete().eq('user_id', this.userId));
+          } catch (_) { /* Tabelle existiert möglicherweise nicht */ }
+
+          // 5. localStorage bereinigen
+          try {
+            localStorage.removeItem('6min_onboarding_done');
+            localStorage.removeItem('6min_theme');
+            localStorage.removeItem(DEMO_STORAGE_KEY);
+          } catch (_) {}
+
+          // 6. Session beenden
+          await this.signOut();
+
+          return { success: true };
+        } catch (e) {
+          console.error('[DSGVO] Löschung fehlgeschlagen');
+          return { success: false, error: e.message || 'Löschung fehlgeschlagen' };
+        }
+      }
+
       // ---- Legacy Supabase init (for backwards compat) ----
       async initSupabase(url, key) {
         try {
@@ -2372,7 +2433,7 @@
               body: JSON.stringify(payload)
             });
           } else {
-            console.log('[Feedback] Kein GAS-Endpoint konfiguriert. Payload:', payload);
+            console.log('[Feedback] Kein GAS-Endpoint konfiguriert');
           }
 
           feedbackLastSubmit = Date.now();
@@ -2452,16 +2513,42 @@
     // COMPONENT: Settings
     // ============================================================================
 
+    // State für Konto-Löschung
+    let deleteConfirmOpen = false;
+    let deleteConfirmText = '';
+    let deleteInProgress = false;
+    // State für Datenschutz-Overlay
+    let privacyOpen = false;
+
     function SettingsScreen({ dataService, onNavigate, onLogout }) {
       const userEmail = dataService.user?.email || (dataService.isDemo ? 'Demo-Modus' : 'Unbekannt');
       const isConnected = !dataService.isDemo && dataService.supabaseClient;
+
+      const handleDeleteAccount = async () => {
+        if (deleteConfirmText !== 'LÖSCHEN') return;
+        deleteInProgress = true;
+        app.render();
+
+        const result = await dataService.deleteAllUserData();
+        deleteInProgress = false;
+        deleteConfirmOpen = false;
+        deleteConfirmText = '';
+
+        if (result.success) {
+          showToast('Alle Daten wurden gelöscht', 'success');
+          setTimeout(() => onLogout(), 1500);
+        } else {
+          showToast('Löschung fehlgeschlagen: ' + (result.error || 'Unbekannt'), 'error');
+          app.render();
+        }
+      };
 
       return html`
         <div class="screen settings-screen active">
           <div class="settings-section">
             <div class="settings-title">Konto</div>
             <div class="settings-item">
-              <div class="settings-label">${userEmail}</div>
+              <div class="settings-label">${escapeHtml(userEmail)}</div>
               <div style="font-size:12px;color:#6B7280">${dataService.isDemo ? '🟡 Lokal' : '🟢 Cloud'}</div>
             </div>
             ${dataService.isDemo ? html`
@@ -2481,10 +2568,36 @@
           </div>
 
           <div class="settings-section">
+            <div class="settings-title">Datenschutz</div>
+            <div class="settings-item" style="cursor:pointer" onclick=${() => { privacyOpen = true; app.render(); }}>
+              <div class="settings-label">🔒 Datenschutzhinweise</div>
+              <div>→</div>
+            </div>
+            <div class="settings-item" style="cursor:pointer" onclick=${() => {
+              try {
+                const data = dataService.isDemo
+                  ? JSON.stringify(DEMO_DATA, null, 2)
+                  : 'Datenexport ist nur im Demo-Modus verfügbar. Im Cloud-Modus kontaktiere den Betreiber.';
+                const blob = new Blob([data], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = '6min-tagebuch-export.json';
+                a.click(); URL.revokeObjectURL(url);
+                showToast('Daten exportiert', 'success');
+              } catch (e) {
+                showToast('Export fehlgeschlagen', 'error');
+              }
+            }}>
+              <div class="settings-label">📥 Meine Daten exportieren</div>
+              <div style="font-size:12px;color:var(--text-secondary)">Art. 20 DSGVO</div>
+            </div>
+          </div>
+
+          <div class="settings-section">
             <div class="settings-title">Über die App</div>
             <div class="settings-item">
               <div class="settings-label">Version</div>
-              <div class="settings-value">1.4.0</div>
+              <div class="settings-value">1.5.0</div>
             </div>
             <div class="settings-item">
               <div class="settings-label">Entwickelt mit ❤️</div>
@@ -2510,7 +2623,70 @@
               ${dataService.isDemo ? 'Zurück zum Start' : 'Abmelden'}
             </button>
           </div>
+
+          <div class="settings-section" style="margin-top:16px">
+            <div class="settings-title" style="color:#DC2626">Gefahrenzone</div>
+            ${!deleteConfirmOpen ? html`
+              <button class="btn" style="width:100%;background:#FEE2E2;color:#DC2626;border:1px solid #FECACA;font-weight:600" onclick=${() => { deleteConfirmOpen = true; app.render(); }}>
+                🗑️ Alle meine Daten löschen
+              </button>
+            ` : html`
+              <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:12px;padding:16px">
+                <div style="font-size:14px;font-weight:600;color:#DC2626;margin-bottom:8px">Bist du sicher?</div>
+                <div style="font-size:13px;color:#7F1D1D;margin-bottom:12px">
+                  ${dataService.isDemo
+                    ? 'Alle lokalen Tagebuch-Einträge, Habits und Reflektionen werden unwiderruflich gelöscht.'
+                    : 'Alle Einträge, Habits und Reflektionen werden unwiderruflich aus der Cloud gelöscht. Dein Konto bleibt bestehen, aber alle Inhalte sind weg.'}
+                </div>
+                <div style="font-size:12px;color:#9CA3AF;margin-bottom:8px">Tippe <strong>LÖSCHEN</strong> zur Bestätigung:</div>
+                <input type="text" style="width:100%;padding:10px;border:1px solid #FECACA;border-radius:8px;font-size:14px;margin-bottom:12px;box-sizing:border-box"
+                  placeholder="LÖSCHEN"
+                  value=${deleteConfirmText}
+                  oninput=${e => { deleteConfirmText = e.target.value; app.render(); }}
+                />
+                <div style="display:flex;gap:8px">
+                  <button class="btn" style="flex:1;background:#E5E7EB;color:#374151;border:none" onclick=${() => { deleteConfirmOpen = false; deleteConfirmText = ''; app.render(); }}>
+                    Abbrechen
+                  </button>
+                  <button class="btn" style="flex:1;background:${deleteConfirmText === 'LÖSCHEN' ? '#DC2626' : '#E5E7EB'};color:${deleteConfirmText === 'LÖSCHEN' ? '#fff' : '#9CA3AF'};border:none;font-weight:600"
+                    disabled=${deleteConfirmText !== 'LÖSCHEN' || deleteInProgress}
+                    onclick=${handleDeleteAccount}>
+                    ${deleteInProgress ? 'Lösche...' : 'Endgültig löschen'}
+                  </button>
+                </div>
+              </div>
+            `}
+          </div>
         </div>
+
+        ${privacyOpen ? html`
+          <div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px" onclick=${e => { if (e.target === e.currentTarget) { privacyOpen = false; app.render(); } }}>
+            <div style="background:var(--card);border-radius:16px;max-width:500px;width:100%;max-height:80vh;overflow-y:auto;padding:24px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <h2 style="margin:0;font-size:18px;color:var(--text)">Datenschutzhinweise</h2>
+                <button style="background:none;border:none;font-size:24px;cursor:pointer;color:var(--text)" onclick=${() => { privacyOpen = false; app.render(); }}>×</button>
+              </div>
+              <div style="font-size:13px;line-height:1.6;color:var(--text-secondary)">
+                <p style="margin-bottom:12px"><strong style="color:var(--text)">Verantwortlicher:</strong> Norbert Kotzan, Brückenstr. 45, 69120 Heidelberg</p>
+
+                <p style="margin-bottom:12px"><strong style="color:var(--text)">Welche Daten werden gespeichert?</strong></p>
+                <p style="margin-bottom:12px">Im <em>Demo-Modus</em> werden alle Daten ausschließlich lokal auf deinem Gerät gespeichert (localStorage). Es werden keine Daten an Server übertragen.</p>
+                <p style="margin-bottom:12px">Im <em>Cloud-Modus</em> werden Tagebuch-Einträge, Habits und Reflektionen verschlüsselt bei Supabase (EU-Rechenzentrum) gespeichert. Dein E-Mail-Adresse dient zur Authentifizierung.</p>
+
+                <p style="margin-bottom:12px"><strong style="color:var(--text)">Rechtsgrundlage:</strong> Art. 6 Abs. 1 lit. a DSGVO (Einwilligung durch Nutzung der App)</p>
+
+                <p style="margin-bottom:12px"><strong style="color:var(--text)">Deine Rechte:</strong></p>
+                <p style="margin-bottom:8px">Du hast jederzeit das Recht auf Auskunft (Art. 15), Berichtigung (Art. 16), Löschung (Art. 17), Datenübertragbarkeit (Art. 20) und Widerspruch (Art. 21). Nutze dazu die Funktionen in den Einstellungen oder kontaktiere den Verantwortlichen.</p>
+
+                <p style="margin-bottom:12px"><strong style="color:var(--text)">Feedback-Formular:</strong> Beim Absenden von Feedback werden Kategorie, Bewertung und Nachricht an Google Sheets übermittelt. Es werden keine personenbezogenen Daten erhoben.</p>
+
+                <p style="margin-bottom:12px"><strong style="color:var(--text)">Cookies & Tracking:</strong> Diese App verwendet keine Cookies und kein Tracking. Es werden keine Analyse-Tools eingesetzt.</p>
+
+                <p style="margin-bottom:0"><strong style="color:var(--text)">Kontakt:</strong> kotzan@gmail.com</p>
+              </div>
+            </div>
+          </div>
+        ` : ''}
       `;
     }
 
@@ -2574,7 +2750,7 @@
       setupAuthListener(ds) {
         if (this.unsubAuth) this.unsubAuth();
         this.unsubAuth = ds.onAuthStateChange(async (event, session) => {
-          console.log('[Auth]', event, session?.user?.email);
+          console.log('[Auth]', event);
           if (event === 'SIGNED_IN' && session?.user) {
             await this.enterApp(ds);
           } else if (event === 'SIGNED_OUT') {
