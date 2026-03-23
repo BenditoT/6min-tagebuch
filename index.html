@@ -1979,10 +1979,12 @@
             <div class="question-inputs">
               ${Array(question.count).fill().map((_, idx) => html`
                 <textarea
+                  key=${question.key + '-' + idx}
                   class="input-field"
                   placeholder=${`Antwort ${idx + 1}`}
                   rows=${2}
                   maxlength=${500}
+                  value=${question.count > 1 ? (journalAnswers[question.key]?.[idx] || '') : (journalAnswers[question.key] || '')}
                   oninput=${e => {
                     if (question.count > 1) {
                       if (!journalAnswers[question.key]) journalAnswers[question.key] = [];
@@ -1997,7 +1999,7 @@
                       await dataService.saveEntry(null, type, journalAnswers);
                     }
                   }}
-                >${question.count > 1 ? (journalAnswers[question.key]?.[idx] || '') : (journalAnswers[question.key] || '')}</textarea>
+                ></textarea>
               `)}
             </div>
           </div>
@@ -2687,6 +2689,11 @@
               </button>
             </div>
 
+            ${!feedbackOpen ? html`
+              <button onclick=${() => { feedbackOpen = true; feedbackCategory = 'Verbesserung'; feedbackRating = 0; feedbackMessage = ''; app.render(); }}
+                style="position:fixed;bottom:${screen === 'journal' ? '20px' : '80px'};right:16px;z-index:90;width:48px;height:48px;border-radius:50%;background:var(--accent);color:#fff;border:none;font-size:20px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.2);display:flex;align-items:center;justify-content:center"
+                title="Feedback geben">💬</button>
+            ` : ''}
             ${feedbackOpen ? html`<${FeedbackModal} onClose=${() => { feedbackOpen = false; app.render(); }} />` : ''}
             <${Toast} />
           </div>
