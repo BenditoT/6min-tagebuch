@@ -8,7 +8,8 @@
   <meta name="apple-mobile-web-app-title" content="6-Min Tagebuch">
   <meta name="theme-color" content="#1A1A2E">
   <link rel="manifest" href="manifest.json">
-  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%231A1A2E'/><text x='50' y='65' font-size='50' text-anchor='middle' fill='%23E8B86D'>6</text></svg>">
+  <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
   <title>6-Minuten-Tagebuch</title>
   <style>
     :root {
@@ -1190,7 +1191,12 @@
       static async createWithSupabase(url, key) {
         const ds = new DataService(false);
         try {
-          const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2.45.0');
+          // Import mit 8s Timeout — bei CDN-Ausfall Fallback auf Demo-Mode
+          const importPromise = import('https://esm.sh/@supabase/supabase-js@2.45.0');
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('CDN timeout nach 8s')), 8000)
+          );
+          const { createClient } = await Promise.race([importPromise, timeoutPromise]);
           ds.supabaseClient = createClient(url, key, {
             auth: {
               autoRefreshToken: true,
@@ -1201,6 +1207,7 @@
           return ds;
         } catch (e) {
           console.error('Supabase init failed:', e);
+          console.warn('[Fallback] Wechsel zu Demo-Modus');
           return null;
         }
       }
@@ -2425,6 +2432,9 @@
               this.setupAuthListener(ds);
               this.setState({ dataService: ds, authChecking: false });
               return;
+            } else {
+              // CDN-Timeout oder Supabase-Fehler — Fallback Demo-Mode anbieten
+              console.warn('[Auto-Connect] Supabase nicht verfügbar, Auth-Screen mit Demo-Option');
             }
           } catch (e) {
             console.warn('[Auto-Connect] Supabase-Verbindung fehlgeschlagen, fallback auf Auth-Screen', e);
@@ -2452,6 +2462,8 @@
       async enterApp(ds) {
         const entry = await ds.getEntries();
         const streakData = await ds.getStreak();
+        // Onboarding nur beim allerersten App-Start zeigen
+        const isFirstTime = !localStorage.getItem('6min_onboarding_done');
         this.setState({
           screen: 'dashboard',
           dataService: ds,
@@ -2459,7 +2471,7 @@
           todayEntry: entry,
           streak: streakData.streak,
           habits: ds.isDemo ? DEMO_DATA.habits : [],
-          showOnboarding: false
+          showOnboarding: isFirstTime
         });
       }
 
@@ -2546,6 +2558,7 @@
       };
 
       handleOnboardingComplete = () => {
+        localStorage.setItem('6min_onboarding_done', '1');
         this.setState({ showOnboarding: false });
       };
 
@@ -2686,10 +2699,34 @@
       }
     };
 
-    // Service Worker registrieren (PWA)
-    if ('serviceWorker' in navigator) {
+    // Service Worker registrieren (PWA) — nur über HTTPS oder localhost
+    if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
       navigator.serviceWorker.register('sw.js')
-        .then(reg => console.log('[App] SW registered:', reg.scope))
+        .then(reg => {
+          console.log('[App] SW registered:', reg.scope);
+
+          // Regelmäßig auf Updates prüfen (alle 60s)
+          setInterval(() => reg.update().catch(() => {}), 60000);
+
+          // Update-Notification wenn neue Version bereit
+          reg.addEventListener('updatefound', () => {
+            const newSW = reg.installing;
+            if (!newSW) return;
+            newSW.addEventListener('statechange', () => {
+              if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                // Neue Version verfügbar — User informieren
+                if (typeof showToast === 'function') {
+                  showToast('Neue Version verfügbar! Seite neu laden.', 'info');
+                }
+                // Auto-Reload nach 3 Sekunden
+                setTimeout(() => {
+                  newSW.postMessage({ type: 'SKIP_WAITING' });
+                  location.reload();
+                }, 3000);
+              }
+            });
+          });
+        })
         .catch(err => console.warn('[App] SW registration failed:', err));
     }
 

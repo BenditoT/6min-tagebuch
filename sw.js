@@ -1,7 +1,7 @@
 // sw.js — Service Worker für 6-Minuten-Tagebuch PWA
-// Basierend auf pwa-offline-cache Skill
+// Phase 1 Quick Wins: CDN precache, Supabase-JS cache, POST/401 fix, Update-Notification
 
-const CACHE_VERSION = 'v1.0.0';
+const CACHE_VERSION = 'v1.1.0';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `runtime-${CACHE_VERSION}`;
 
@@ -11,11 +11,12 @@ const STATIC_ASSETS = [
   '/manifest.json'
 ];
 
-// CDN-URLs die gecacht werden sollen
+// CDN-URLs die beim Install vorgeladen werden
 const CDN_ASSETS = [
   'https://esm.sh/preact@10.19.3',
   'https://esm.sh/preact@10.19.3/hooks',
-  'https://esm.sh/htm@3.1.1'
+  'https://esm.sh/htm@3.1.1',
+  'https://esm.sh/@supabase/supabase-js@2.45.0'
 ];
 
 // ================== INSTALLATION ==================
@@ -27,14 +28,29 @@ self.addEventListener('install', (event) => {
         console.log('[SW] Caching static assets');
         return cache.addAll(STATIC_ASSETS);
       })
-      .then(() => self.skipWaiting())
+      .then(() => {
+        // CDN-Assets separat cachen — bei Fehler trotzdem installieren
+        return caches.open(STATIC_CACHE).then(cache => {
+          return Promise.allSettled(
+            CDN_ASSETS.map(url =>
+              fetch(url).then(resp => {
+                if (resp.ok) {
+                  cache.put(url, resp);
+                  console.log('[SW] Cached CDN:', url.substring(0, 60));
+                }
+              }).catch(err => console.warn('[SW] CDN cache skip:', url.substring(0, 40), err.message))
+            )
+          );
+        });
+      })
+      // Nicht sofort skipWaiting — warte auf Message vom Client
       .catch(err => console.error('[SW] Install failed:', err))
   );
 });
 
 // ================== ACTIVATION ==================
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating...');
+  console.log('[SW] Activating v' + CACHE_VERSION);
   event.waitUntil(
     caches.keys()
       .then(cacheNames => Promise.all(
@@ -49,6 +65,14 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// ================== MESSAGE HANDLER ==================
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    console.log('[SW] Skip waiting requested by client');
+    self.skipWaiting();
+  }
+});
+
 // ================== FETCH ==================
 self.addEventListener('fetch', (event) => {
   const { request } = event;
@@ -56,13 +80,24 @@ self.addEventListener('fetch', (event) => {
 
   if (!url.protocol.startsWith('http')) return;
 
-  // Supabase API: Network-first (immer aktuelle Daten)
+  // Mutations (POST/PUT/DELETE/PATCH) NIEMALS cachen — immer direkt ans Netzwerk
+  if (request.method !== 'GET') {
+    event.respondWith(fetch(request).catch(() =>
+      new Response(JSON.stringify({ error: 'Offline — Aktion nicht möglich' }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    ));
+    return;
+  }
+
+  // Supabase API: Network-first (immer aktuelle Daten), aber 401/403 nicht cachen
   if (url.hostname.includes('supabase')) {
     event.respondWith(networkFirst(request, RUNTIME_CACHE));
     return;
   }
 
-  // CDN-Assets: Cache-first (stabil, versioniert)
+  // CDN-Assets (esm.sh, jsdelivr): Cache-first (stabil, versioniert)
   if (url.hostname === 'esm.sh' || url.hostname === 'cdn.jsdelivr.net') {
     event.respondWith(cacheFirst(request, STATIC_CACHE));
     return;
@@ -101,6 +136,12 @@ async function cacheFirst(request, cacheName) {
 async function networkFirst(request, cacheName) {
   try {
     const response = await fetch(request);
+
+    // Auth-Fehler NICHT cachen — sonst zeigt Offline immer 401
+    if (response.status === 401 || response.status === 403) {
+      return response;
+    }
+
     if (response.ok) {
       const cache = await caches.open(cacheName);
       cache.put(request, response.clone());
