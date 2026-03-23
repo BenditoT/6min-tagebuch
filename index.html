@@ -2429,18 +2429,29 @@
           try {
             const ds = await DataService.createWithSupabase(supabaseUrl.trim(), supabaseKey.trim());
             if (ds) {
+              // Prüfe ob bereits eine Session existiert
+              const { data: { session } } = await ds.supabaseClient.auth.getSession();
+              if (session?.user) {
+                // Bestehende Session — direkt in die App
+                ds.user = session.user;
+                ds.userId = session.user.id;
+                this.setupAuthListener(ds);
+                await this.enterApp(ds);
+                return;
+              }
+              // Keine Session — trotzdem Auth-Listener aufsetzen für späteren Login
               this.setupAuthListener(ds);
-              this.setState({ dataService: ds, authChecking: false });
+              // Auto-Demo-Modus starten (bis OAuth konfiguriert ist)
+              console.log('[Auto-Connect] Keine Session, starte Demo-Modus');
+              await this.handleDemoMode();
               return;
-            } else {
-              // CDN-Timeout oder Supabase-Fehler — Fallback Demo-Mode anbieten
-              console.warn('[Auto-Connect] Supabase nicht verfügbar, Auth-Screen mit Demo-Option');
             }
           } catch (e) {
-            console.warn('[Auto-Connect] Supabase-Verbindung fehlgeschlagen, fallback auf Auth-Screen', e);
+            console.warn('[Auto-Connect] Supabase-Verbindung fehlgeschlagen, fallback auf Demo-Modus', e);
           }
         }
-        this.setState({ authChecking: false });
+        // Fallback: Demo-Modus
+        await this.handleDemoMode();
       }
 
       componentWillUnmount() {
