@@ -1491,9 +1491,9 @@
     let authError = '';
     let authLoading = false;
 
-    // Supabase config (saved in memory — user enters once per session)
-    let supabaseUrl = '';
-    let supabaseKey = '';
+    // Supabase config — hardcoded für Produktiv-Modus
+    let supabaseUrl = 'https://uafiwndmlhluyzksqvdp.supabase.co';
+    let supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVhZml3bmRtbGhsdXl6a3NxdmRwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyNjMzNjAsImV4cCI6MjA4OTgzOTM2MH0.RGIJrm7gVJkZsyFY6mN3XyUX9THdsK4hzE89Q1NebXc';
 
     function AuthScreen({ onLogin, onDemoMode, dataService }) {
 
@@ -2416,8 +2416,20 @@
       }
 
       async componentDidMount() {
-        // No automatic session restoration from sessionStorage
         window._appNavigate = this.handleNavigate;
+        // Auto-connect Supabase wenn Credentials hardcoded sind
+        if (supabaseUrl && supabaseKey) {
+          try {
+            const ds = await DataService.createWithSupabase(supabaseUrl.trim(), supabaseKey.trim());
+            if (ds) {
+              this.setupAuthListener(ds);
+              this.setState({ dataService: ds, authChecking: false });
+              return;
+            }
+          } catch (e) {
+            console.warn('[Auto-Connect] Supabase-Verbindung fehlgeschlagen, fallback auf Auth-Screen', e);
+          }
+        }
         this.setState({ authChecking: false });
       }
 
