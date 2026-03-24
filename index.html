@@ -1517,10 +1517,10 @@
         try {
           const result = await this._withRetry(async () => await this.supabaseClient
             .from('daily_entries')
-            .select('*')
+            .select('morning, evening')
             .eq('user_id', this.userId)
             .eq('entry_date', targetDate)
-            .single());
+            .maybeSingle());
 
           return result.data || { morning: null, evening: null };
         } catch (e) {
@@ -2930,7 +2930,7 @@
             <div class="settings-title">Über die App</div>
             <div class="settings-item">
               <div class="settings-label">Version</div>
-              <div class="settings-value">1.7.0</div>
+              <div class="settings-value">1.9.1</div>
             </div>
             <div class="settings-item">
               <div class="settings-label">Entwickelt mit ❤️</div>
