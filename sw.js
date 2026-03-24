@@ -1,7 +1,7 @@
 // sw.js — Service Worker für 6-Minuten-Tagebuch PWA
-// v1.8.0: Review #3 Fixes — Resilient Install, CSP, Timezone, Archive Cloud-Mode
+// v1.9.0: Google Auth — OAuth Login via Supabase, CSP erweitert, Auth-Screen statt Auto-Demo
 
-const CACHE_VERSION = 'v1.8.0';
+const CACHE_VERSION = 'v1.9.0';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `runtime-${CACHE_VERSION}`;
 

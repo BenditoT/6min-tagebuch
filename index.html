@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="6-Min Tagebuch">
   <meta name="theme-color" content="#1A1A2E">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://esm.sh 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co https://script.google.com; img-src 'self' data:; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://esm.sh https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co https://script.google.com https://esm.sh https://cdn.jsdelivr.net; img-src 'self' data: https://*.googleusercontent.com; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'">
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
@@ -3063,11 +3063,10 @@
                 await this.enterApp(ds);
                 return;
               }
-              // Keine Session — trotzdem Auth-Listener aufsetzen für späteren Login
+              // Keine Session — Auth-Screen zeigen für Google Login oder Demo-Modus
               this.setupAuthListener(ds);
-              // Auto-Demo-Modus starten (bis OAuth konfiguriert ist)
-              console.log('[Auto-Connect] Keine Session, starte Demo-Modus');
-              await this.handleDemoMode();
+              console.log('[Auto-Connect] Keine Session, zeige Auth-Screen');
+              this.setState({ screen: 'auth', dataService: ds, authChecking: false });
               return;
             }
           } catch (e) {
