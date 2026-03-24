@@ -7,6 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="6-Min Tagebuch">
   <meta name="theme-color" content="#1A1A2E">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://esm.sh 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co https://script.google.com; img-src 'self' data:; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'">
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
@@ -1110,10 +1111,40 @@
   <div id="app"></div>
 
   <script type="module">
-    import { h, render, Component, Fragment } from 'https://esm.sh/preact@10.19.3';
-    import htm from 'https://esm.sh/htm@3.1.1';
+    // ============================================================================
+    // CDN-FALLBACK: Dynamische Imports mit Timeout + Fallback-CDN
+    // ============================================================================
+    async function importWithTimeout(url, ms = 10000) {
+      return Promise.race([
+        import(url),
+        new Promise((_, rej) => setTimeout(() => rej(new Error(`CDN timeout: ${url}`)), ms))
+      ]);
+    }
 
-    const html = htm.bind(h);
+    async function importWithFallback(urls, ms = 10000) {
+      for (const url of urls) {
+        try { return await importWithTimeout(url, ms); } catch (e) { console.warn('[CDN]', e.message); }
+      }
+      throw new Error('Alle CDN-Quellen fehlgeschlagen');
+    }
+
+    let h, render, Component, Fragment, html;
+    try {
+      const preact = await importWithFallback([
+        'https://esm.sh/preact@10.19.3',
+        'https://cdn.jsdelivr.net/npm/preact@10.19.3/+esm'
+      ]);
+      ({ h, render, Component, Fragment } = preact);
+
+      const htmMod = await importWithFallback([
+        'https://esm.sh/htm@3.1.1',
+        'https://cdn.jsdelivr.net/npm/htm@3.1.1/+esm'
+      ]);
+      html = htmMod.default.bind(h);
+    } catch (e) {
+      document.getElementById('app').innerHTML = '<div style="padding:40px;text-align:center;font-family:sans-serif"><h2>Verbindungsproblem</h2><p>Die App konnte nicht geladen werden. Bitte prüfe deine Internetverbindung und lade die Seite neu.</p><button onclick="location.reload()" style="margin-top:16px;padding:10px 20px;border-radius:8px;border:none;background:#1A1A2E;color:#fff;cursor:pointer;font-size:14px">Neu laden</button></div>';
+      throw e;
+    }
 
     // ============================================================================
     // GLOBALE ERROR HANDLER
@@ -1198,6 +1229,41 @@
       frozenDates: {}
     };
 
+    // iOS ITP Schutz: IndexedDB als Backup für localStorage (Safari löscht nach 7 Tagen)
+    const IDB_NAME = '6min_backup';
+    const IDB_STORE = 'data';
+
+    function openIDB() {
+      return new Promise((resolve, reject) => {
+        try {
+          const req = indexedDB.open(IDB_NAME, 1);
+          req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        } catch (e) { reject(e); }
+      });
+    }
+
+    async function idbGet(key) {
+      try {
+        const db = await openIDB();
+        return new Promise((resolve) => {
+          const tx = db.transaction(IDB_STORE, 'readonly');
+          const req = tx.objectStore(IDB_STORE).get(key);
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => resolve(null);
+        });
+      } catch { return null; }
+    }
+
+    async function idbSet(key, val) {
+      try {
+        const db = await openIDB();
+        const tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.objectStore(IDB_STORE).put(val, key);
+      } catch { /* silent */ }
+    }
+
     function loadDemoData() {
       try {
         const stored = localStorage.getItem(DEMO_STORAGE_KEY);
@@ -1212,11 +1278,30 @@
       return { ...DEMO_DEFAULTS };
     }
 
+    // Async: IndexedDB-Recovery bei leerem localStorage (iOS ITP)
+    async function recoverDemoDataFromIDB() {
+      const lsData = localStorage.getItem(DEMO_STORAGE_KEY);
+      if (!lsData || lsData === '{}') {
+        const idbData = await idbGet(DEMO_STORAGE_KEY);
+        if (idbData && Object.keys(idbData.entries || {}).length > 0) {
+          console.log('[ITP] Recovering data from IndexedDB backup');
+          Object.assign(DEMO_DATA, { ...DEMO_DEFAULTS, ...idbData });
+          saveDemoData(); // Zurück in localStorage schreiben
+          return true;
+        }
+      }
+      return false;
+    }
+
     function saveDemoData() {
       try {
         localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(DEMO_DATA));
+        // Dual-Write: auch in IndexedDB als Backup (async, non-blocking)
+        idbSet(DEMO_STORAGE_KEY, JSON.parse(JSON.stringify(DEMO_DATA)));
       } catch (e) {
         console.warn('[Demo] localStorage write failed:', e.message);
+        // Fallback: nur IndexedDB
+        idbSet(DEMO_STORAGE_KEY, JSON.parse(JSON.stringify(DEMO_DATA)));
       }
     }
 
@@ -1547,6 +1632,28 @@
         }
       }
 
+      async getEntryDatesForMonth(year, month) {
+        const prefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+        if (this.isDemo) {
+          return Object.keys(DEMO_DATA.entries).filter(d => d.startsWith(prefix) && (DEMO_DATA.entries[d].morning || DEMO_DATA.entries[d].evening));
+        }
+        if (!this.supabaseClient) return [];
+        try {
+          const startDate = `${prefix}-01`;
+          const endDate = `${prefix}-${String(new Date(year, month + 1, 0).getDate()).padStart(2, '0')}`;
+          const result = await this._withRetry(async () => await this.supabaseClient
+            .from('daily_entries')
+            .select('entry_date')
+            .eq('user_id', this.userId)
+            .gte('entry_date', startDate)
+            .lte('entry_date', endDate));
+          return result.data ? result.data.map(d => d.entry_date) : [];
+        } catch (e) {
+          console.error('getEntryDatesForMonth error:', e);
+          return [];
+        }
+      }
+
       async toggleHabit(habitId, date) {
         const key = `${date}_${habitId}`;
 
@@ -1655,7 +1762,10 @@
 
       getTodayDate() {
         const now = new Date();
-        return now.toISOString().split('T')[0];
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        const d = String(now.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
       }
 
       isMorningTime() {
@@ -2154,6 +2264,40 @@
               </div>
             ` : ''}
           </div>
+
+          ${habits && habits.length > 0 ? html`
+            <div style="background:var(--card,#FFFFFF);padding:16px 20px;border-radius:16px;box-shadow:0 2px 8px var(--shadow)">
+              <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:12px">📊 Letzte 4 Wochen</div>
+              ${habits.map(habit => {
+                const days = [];
+                for (let i = 27; i >= 0; i--) {
+                  const d = new Date();
+                  d.setDate(d.getDate() - i);
+                  const y = d.getFullYear();
+                  const m = String(d.getMonth()+1).padStart(2,'0');
+                  const dd = String(d.getDate()).padStart(2,'0');
+                  const ds = y + '-' + m + '-' + dd;
+                  const key = ds + '_' + habit.id;
+                  const done = dataService.isDemo ? !!DEMO_DATA.habitTracks[key] : false;
+                  days.push({ ds, done, day: d.getDay() });
+                }
+                const doneCount = days.filter(d => d.done).length;
+                return html`
+                  <div style="margin-bottom:10px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                      <div style="font-size:12px;color:var(--text-secondary)">${escapeHtml(habit.name)}</div>
+                      <div style="font-size:11px;color:var(--text-secondary)">${doneCount}/28</div>
+                    </div>
+                    <div style="display:flex;gap:2px;flex-wrap:wrap">
+                      ${days.map(d => html`
+                        <div title=${d.ds} style="width:10px;height:10px;border-radius:2px;background:${d.done ? 'var(--success,#16a34a)' : 'var(--bg-alt,#F3F4F6)'};opacity:${d.done ? (d.day === 0 || d.day === 6 ? '0.7' : '1') : '0.5'}"></div>
+                      `)}
+                    </div>
+                  </div>
+                `;
+              })}
+            </div>
+          ` : ''}
         </div>
       `;
     }
@@ -2324,6 +2468,8 @@
     let archiveViewMonth = new Date();
     let archiveSelectedDate = null;
     let archiveSelectedEntry = null;
+    let archiveMonthEntryDates = []; // Dates mit Einträgen im aktuellen Monat
+    let archiveMonthLoaded = ''; // "YYYY-MM" des geladenen Monats
 
     // XSS-Schutz: HTML-Entities escapen bevor User-Content gerendert wird
     function escapeHtml(text) {
@@ -2352,6 +2498,16 @@
       const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
       const weekDays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
+      // Lade Eintrags-Daten für aktuellen Monat (Demo + Cloud)
+      const monthKey = `${archiveViewMonth.getFullYear()}-${String(archiveViewMonth.getMonth()+1).padStart(2,'0')}`;
+      if (archiveMonthLoaded !== monthKey) {
+        archiveMonthLoaded = monthKey;
+        dataService.getEntryDatesForMonth(archiveViewMonth.getFullYear(), archiveViewMonth.getMonth()).then(dates => {
+          archiveMonthEntryDates = dates;
+          app.render();
+        });
+      }
+
       const firstDay = getFirstDayOfMonth(archiveViewMonth);
       const daysInMonth = getDaysInMonth(archiveViewMonth);
       const daysInPrevMonth = getDaysInMonth(new Date(archiveViewMonth.getFullYear(), archiveViewMonth.getMonth() - 1));
@@ -2362,7 +2518,7 @@
       }
       for (let day = 1; day <= daysInMonth; day++) {
         const dateStr = `${archiveViewMonth.getFullYear()}-${String(archiveViewMonth.getMonth()+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-        const hasEntry = dataService.isDemo ? !!DEMO_DATA.entries[dateStr] : false;
+        const hasEntry = archiveMonthEntryDates.includes(dateStr);
         calendarDays.push({ day, isOtherMonth: false, dateStr, hasEntry });
       }
       const remainingDays = 42 - calendarDays.length;
@@ -2600,7 +2756,7 @@
             rating: feedbackRating,
             message: feedbackMessage.substring(0, 2000),
             page: window.location.pathname,
-            userAgent: navigator.userAgent.substring(0, 300)
+            platform: (navigator.platform || 'unknown').substring(0, 30)
           };
 
           if (FEEDBACK_GAS_URL) {
@@ -2890,6 +3046,8 @@
 
       async componentDidMount() {
         window._appNavigate = this.handleNavigate;
+        // iOS ITP Recovery: Falls localStorage gelöscht wurde, aus IndexedDB wiederherstellen
+        await recoverDemoDataFromIDB();
         // Auto-connect Supabase wenn Credentials hardcoded sind
         if (supabaseUrl && supabaseKey) {
           try {
@@ -3207,6 +3365,14 @@
           document.addEventListener('visibilitychange', () => { if (!document.hidden) smartSWUpdate(); });
           setInterval(smartSWUpdate, 14400000); // Fallback alle 4h
 
+          // Reload nach Controller-Wechsel (sicher, kein Race mit SKIP_WAITING)
+          let refreshing = false;
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (refreshing) return;
+            refreshing = true;
+            location.reload();
+          });
+
           // Update-Banner wenn neue Version bereit (kein Auto-Reload)
           let updateBannerShown = false;
           reg.addEventListener('updatefound', () => {
@@ -3215,16 +3381,21 @@
             newSW.addEventListener('statechange', () => {
               if (newSW.state === 'installed' && navigator.serviceWorker.controller && !updateBannerShown) {
                 updateBannerShown = true;
-                // Update-Banner anzeigen statt Auto-Reload
+                // Update-Banner via DOM-API (kein innerHTML)
                 const banner = document.createElement('div');
                 banner.id = 'sw-update-banner';
                 banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:var(--accent-light,#E8B86D);color:#1A1A2E;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.2)';
-                banner.innerHTML = '<span>Neue Version verfügbar!</span><button onclick="this.parentElement.querySelector(\'[data-action=reload]\').click()" style="background:#1A1A2E;color:#fff;border:none;padding:6px 14px;border-radius:8px;font-size:13px;cursor:pointer;font-weight:600">Jetzt laden</button>';
-                banner.querySelector('button').setAttribute('data-action', 'reload');
-                banner.querySelector('[data-action=reload]').addEventListener('click', () => {
+                const label = document.createElement('span');
+                label.textContent = 'Neue Version verfügbar!';
+                const btn = document.createElement('button');
+                btn.textContent = 'Jetzt laden';
+                btn.style.cssText = 'background:#1A1A2E;color:#fff;border:none;padding:6px 14px;border-radius:8px;font-size:13px;cursor:pointer;font-weight:600';
+                btn.addEventListener('click', () => {
                   newSW.postMessage({ type: 'SKIP_WAITING' });
-                  location.reload();
+                  // Reload passiert automatisch via controllerchange-Event
                 });
+                banner.appendChild(label);
+                banner.appendChild(btn);
                 document.body.prepend(banner);
               }
             });

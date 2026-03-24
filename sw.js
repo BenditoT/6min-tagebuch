@@ -1,7 +1,7 @@
 // sw.js — Service Worker für 6-Minuten-Tagebuch PWA
-// v1.7.0: Phase 5 Platform Hardening — SW Backoff, Update-Banner, Race Conditions, Token-Refresh
+// v1.8.0: Review #3 Fixes — Resilient Install, CSP, Timezone, Archive Cloud-Mode
 
-const CACHE_VERSION = 'v1.7.0';
+const CACHE_VERSION = 'v1.8.0';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `runtime-${CACHE_VERSION}`;
 
@@ -29,7 +29,13 @@ self.addEventListener('install', (event) => {
     caches.open(STATIC_CACHE)
       .then(cache => {
         console.log('[SW] Caching static assets');
-        return cache.addAll(STATIC_ASSETS);
+        // Resilient: einzeln cachen statt addAll (ein fehlender Asset blockt nicht alles)
+        return Promise.allSettled(
+          STATIC_ASSETS.map(url =>
+            fetch(url).then(resp => { if (resp.ok) return cache.put(url, resp); })
+              .catch(err => console.warn('[SW] Static asset failed:', url, err))
+          )
+        );
       })
       .then(() => {
         // CDN-Assets separat — bei Fehler trotzdem installieren
