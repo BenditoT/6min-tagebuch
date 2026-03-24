@@ -1632,6 +1632,68 @@
         }
       }
 
+      // ---- Weekly Reflection Methods (Phase 1) ----
+
+      async saveReflection(weekKey, answers) {
+        if (this.isDemo) {
+          DEMO_DATA.weeklyReflections[weekKey] = { ...answers };
+          saveDemoData();
+          return true;
+        }
+        if (!this.supabaseClient) return false;
+        try {
+          const result = await this._withRetry(async () => await this.supabaseClient
+            .from('weekly_reflections')
+            .upsert({
+              user_id: this.userId,
+              week_key: weekKey,
+              answers: answers,
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'user_id,week_key' }));
+          return !result.error;
+        } catch (e) {
+          console.error('saveReflection error:', e);
+          return false;
+        }
+      }
+
+      async getReflection(weekKey) {
+        if (this.isDemo) {
+          return DEMO_DATA.weeklyReflections[weekKey] || null;
+        }
+        if (!this.supabaseClient) return null;
+        try {
+          const result = await this._withRetry(async () => await this.supabaseClient
+            .from('weekly_reflections')
+            .select('answers')
+            .eq('user_id', this.userId)
+            .eq('week_key', weekKey)
+            .maybeSingle());
+          return result.data?.answers || null;
+        } catch (e) {
+          console.error('getReflection error:', e);
+          return null;
+        }
+      }
+
+      async getAllReflectionWeeks() {
+        if (this.isDemo) {
+          return Object.keys(DEMO_DATA.weeklyReflections).sort().reverse();
+        }
+        if (!this.supabaseClient) return [];
+        try {
+          const result = await this._withRetry(async () => await this.supabaseClient
+            .from('weekly_reflections')
+            .select('week_key')
+            .eq('user_id', this.userId)
+            .order('week_key', { ascending: false }));
+          return (result.data || []).map(r => r.week_key);
+        } catch (e) {
+          console.error('getAllReflectionWeeks error:', e);
+          return [];
+        }
+      }
+
       async getEntryDatesForMonth(year, month) {
         const prefix = `${year}-${String(month + 1).padStart(2, '0')}`;
         if (this.isDemo) {
@@ -2650,71 +2712,157 @@
     let reflectionAnswers = {};
     let reflectionWeek = getISOWeek(new Date());
     let reflectionSaved = false;
+    let reflectionLoading = false;
+    let reflectionLoaded = false; // flag to prevent re-loading on every render
+    let reflectionArchiveWeeks = []; // list of all saved weeks
+
+    // Navigate to a different week
+    function navigateReflectionWeek(dataService, direction) {
+      const currentWeek = reflectionWeek;
+      const [yearStr, weekStr] = currentWeek.split('-W');
+      let year = parseInt(yearStr);
+      let week = parseInt(weekStr) + direction;
+      if (week < 1) { year--; week = 52; }
+      if (week > 52) { year++; week = 1; }
+      const newWeek = year + '-W' + String(week).padStart(2, '0');
+      // Don't navigate beyond current week
+      if (newWeek > getISOWeek(new Date())) return;
+      reflectionWeek = newWeek;
+      reflectionAnswers = {};
+      reflectionSaved = false;
+      reflectionLoaded = false;
+      app.render();
+    }
 
     function WeeklyReflectionScreen({ dataService }) {
-      // Load existing answers for current week
-      if (dataService.isDemo) {
-        const existing = DEMO_DATA.weeklyReflections[reflectionWeek];
-        if (existing && Object.keys(reflectionAnswers).length === 0) {
-          reflectionAnswers = { ...existing };
-        }
+      const currentISOWeek = getISOWeek(new Date());
+      const isCurrentWeek = reflectionWeek === currentISOWeek;
+      const isPastWeek = reflectionWeek < currentISOWeek;
+
+      // Async load existing answers (once per week change)
+      if (!reflectionLoaded && !reflectionLoading) {
+        reflectionLoading = true;
+        (async () => {
+          try {
+            const existing = await dataService.getReflection(reflectionWeek);
+            if (existing && reflectionWeek === reflectionWeek) {
+              reflectionAnswers = { ...existing };
+              reflectionSaved = isPastWeek; // mark past weeks as already saved
+            }
+            // Also load archive list
+            reflectionArchiveWeeks = await dataService.getAllReflectionWeeks();
+          } catch (e) {
+            console.error('Load reflection error:', e);
+          }
+          reflectionLoading = false;
+          reflectionLoaded = true;
+          app.render();
+        })();
       }
 
       const handleSave = async () => {
-        if (dataService.isDemo) {
-          DEMO_DATA.weeklyReflections[reflectionWeek] = { ...reflectionAnswers };
-          saveDemoData();
+        const success = await dataService.saveReflection(reflectionWeek, reflectionAnswers);
+        if (success) {
+          reflectionSaved = true;
+          // Update archive list
+          if (!reflectionArchiveWeeks.includes(reflectionWeek)) {
+            reflectionArchiveWeeks.unshift(reflectionWeek);
+            reflectionArchiveWeeks.sort().reverse();
+          }
+          showToast('Wochenreflexion gespeichert ✓', 'success');
+          triggerConfetti();
+        } else {
+          showToast('Speichern fehlgeschlagen', 'error');
         }
-        reflectionSaved = true;
-        showToast('Wochenreflexion gespeichert ✓', 'success');
-        triggerConfetti();
         app.render();
       };
 
       const weekLabel = reflectionWeek.replace('-W', ', Woche ');
+      const hasContent = Object.values(reflectionAnswers).some(v => v !== '' && v !== undefined && v !== null);
 
       return html`
         <div class="screen reflection-screen active">
           <div class="reflection-header">
             <div class="reflection-title">📝 Wochenreflexion</div>
-            <div class="reflection-week">${weekLabel}</div>
+            <div style="display:flex;align-items:center;justify-content:center;gap:16px;margin-top:4px">
+              <button onclick=${() => navigateReflectionWeek(dataService, -1)}
+                style="background:none;border:none;color:var(--accent-light);font-size:22px;cursor:pointer;padding:4px 8px"
+                title="Vorherige Woche">◀</button>
+              <div class="reflection-week" style="min-width:150px;text-align:center">
+                ${weekLabel}${isCurrentWeek ? ' (aktuell)' : ''}
+              </div>
+              <button onclick=${() => navigateReflectionWeek(dataService, 1)}
+                style="background:none;border:none;color:${isCurrentWeek ? 'var(--text-secondary)' : 'var(--accent-light)'};font-size:22px;cursor:pointer;padding:4px 8px;opacity:${isCurrentWeek ? '0.3' : '1'}"
+                disabled=${isCurrentWeek}
+                title="Nächste Woche">▶</button>
+            </div>
           </div>
 
-          ${WEEKLY_QUESTIONS.map(q => html`
-            <div class="reflection-question" key=${q.key}>
-              <div class="reflection-label">${q.label}</div>
-              ${q.type === 'rating' ? html`
-                <div class="reflection-rating">
-                  ${Array(10).fill().map((_, i) => html`
+          ${reflectionLoading ? html`
+            <div style="text-align:center;padding:40px;color:var(--text-secondary)">
+              <div style="font-size:24px;margin-bottom:8px">⏳</div>
+              Lade Reflexion…
+            </div>
+          ` : html`
+            ${WEEKLY_QUESTIONS.map(q => html`
+              <div class="reflection-question" key=${q.key}>
+                <div class="reflection-label">${q.label}</div>
+                ${q.type === 'rating' ? html`
+                  <div class="reflection-rating">
+                    ${Array(10).fill().map((_, i) => html`
+                      <button
+                        class=${'rating-btn' + (reflectionAnswers[q.key] === (i+1) ? ' selected' : '')}
+                        onclick=${() => { reflectionAnswers[q.key] = i + 1; app.render(); }}
+                      >${i + 1}</button>
+                    `)}
+                  </div>
+                ` : html`
+                  <textarea
+                    class="input-field"
+                    rows="3"
+                    maxlength="500"
+                    placeholder="Deine Antwort..."
+                    value=${reflectionAnswers[q.key] || ''}
+                    oninput=${e => { reflectionAnswers[q.key] = e.target.value; }}
+                    style="-webkit-user-select:text;user-select:text;min-height:60px"
+                  ></textarea>
+                `}
+              </div>
+            `)}
+
+            <button class="btn btn-primary" onclick=${handleSave} style="margin-top:8px"
+              disabled=${!hasContent}>
+              ✓ Reflexion speichern
+            </button>
+
+            ${reflectionSaved ? html`
+              <div style="text-align:center;padding:16px;color:var(--success);font-weight:600">
+                Gespeichert für ${weekLabel}
+              </div>
+            ` : ''}
+
+            ${reflectionArchiveWeeks.length > 1 ? html`
+              <div style="margin-top:24px;border-top:1px solid var(--border);padding-top:16px">
+                <div style="font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">📚 Bisherige Reflexionen</div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px">
+                  ${reflectionArchiveWeeks.map(wk => html`
                     <button
-                      class=${'rating-btn' + (reflectionAnswers[q.key] === (i+1) ? ' selected' : '')}
-                      onclick=${() => { reflectionAnswers[q.key] = i + 1; app.render(); }}
-                    >${i + 1}</button>
+                      onclick=${() => {
+                        if (wk !== reflectionWeek) {
+                          reflectionWeek = wk;
+                          reflectionAnswers = {};
+                          reflectionSaved = false;
+                          reflectionLoaded = false;
+                          app.render();
+                        }
+                      }}
+                      style="padding:4px 10px;border-radius:12px;border:1px solid ${wk === reflectionWeek ? 'var(--accent-light)' : 'var(--border)'};background:${wk === reflectionWeek ? 'var(--accent-light)' : 'transparent'};color:${wk === reflectionWeek ? 'var(--bg)' : 'var(--text-secondary)'};font-size:12px;cursor:pointer"
+                    >${wk.replace('-W', '/W')}</button>
                   `)}
                 </div>
-              ` : html`
-                <textarea
-                  class="input-field"
-                  rows="3"
-                  maxlength="500"
-                  placeholder="Deine Antwort..."
-                  value=${reflectionAnswers[q.key] || ''}
-                  oninput=${e => { reflectionAnswers[q.key] = e.target.value; }}
-                  style="-webkit-user-select:text;user-select:text;min-height:60px"
-                ></textarea>
-              `}
-            </div>
-          `)}
-
-          <button class="btn btn-primary" onclick=${handleSave} style="margin-top:8px">
-            ✓ Reflexion speichern
-          </button>
-
-          ${reflectionSaved ? html`
-            <div style="text-align:center;padding:16px;color:var(--success);font-weight:600">
-              Gespeichert für ${weekLabel}
-            </div>
-          ` : ''}
+              </div>
+            ` : ''}
+          `}
         </div>
       `;
     }
@@ -2930,7 +3078,7 @@
             <div class="settings-title">Über die App</div>
             <div class="settings-item">
               <div class="settings-label">Version</div>
-              <div class="settings-value">1.9.1</div>
+              <div class="settings-value">2.0.0</div>
             </div>
             <div class="settings-item">
               <div class="settings-label">Entwickelt mit ❤️</div>
@@ -3161,6 +3309,8 @@
         } else if (screen === 'reflection') {
           reflectionAnswers = {};
           reflectionSaved = false;
+          reflectionLoaded = false;
+          reflectionLoading = false;
           reflectionWeek = getISOWeek(new Date());
           this.setState({ screen });
         } else if (screen === 'supabase-setup') {
