@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="6-Min Tagebuch">
   <meta name="theme-color" content="#1A1A2E">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://esm.sh https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co https://script.google.com https://esm.sh https://cdn.jsdelivr.net; img-src 'self' data: https://*.googleusercontent.com; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://esm.sh https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co https://script.google.com https://script.googleusercontent.com https://esm.sh https://cdn.jsdelivr.net; img-src 'self' data: https://*.googleusercontent.com; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'">
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
@@ -232,7 +232,7 @@
     }
 
     .auth-toggle span {
-      color: #1A1A2E;
+      color: var(--accent);
       font-weight: 600;
       text-decoration: underline;
     }
@@ -285,7 +285,7 @@
     .setup-title {
       font-size: 32px;
       font-weight: 700;
-      color: #1A1A2E;
+      color: var(--text);
       margin-bottom: 8px;
     }
 
@@ -330,8 +330,8 @@
     }
 
     .btn-secondary {
-      background: #FFFFFF;
-      color: #1A1A2E;
+      background: var(--card);
+      color: var(--text);
       border: 2px solid #1A1A2E;
     }
 
@@ -402,7 +402,7 @@
     .onboarding-title {
       font-size: 28px;
       font-weight: 700;
-      color: #1A1A2E;
+      color: var(--text);
     }
 
     .onboarding-text {
@@ -476,7 +476,7 @@
     .streak-number {
       font-size: 24px;
       font-weight: 700;
-      color: #1A1A2E;
+      color: var(--text);
     }
 
     .streak-label {
@@ -550,7 +550,7 @@
     .habits-title {
       font-size: 14px;
       font-weight: 600;
-      color: #1A1A2E;
+      color: var(--text);
       margin-bottom: 12px;
     }
 
@@ -618,7 +618,7 @@
     .journal-title {
       font-size: 24px;
       font-weight: 700;
-      color: #1A1A2E;
+      color: var(--text);
     }
 
     .journal-close {
@@ -640,13 +640,13 @@
     .progress-bar {
       flex: 1;
       height: 4px;
-      background: #E5E7EB;
+      background: var(--border);
       border-radius: 2px;
       overflow: hidden;
     }
 
     .progress-bar.active {
-      background: #1A1A2E;
+      background: var(--accent);
     }
 
     .question-section {
@@ -659,7 +659,7 @@
     .question-label {
       font-size: 16px;
       font-weight: 600;
-      color: #1A1A2E;
+      color: var(--text);
     }
 
     .question-inputs {
@@ -673,7 +673,7 @@
       gap: 12px;
       margin-top: 32px;
       padding-top: 20px;
-      border-top: 1px solid #E5E7EB;
+      border-top: 1px solid var(--border);
     }
 
     .journal-footer .btn {
@@ -708,7 +708,7 @@
     .calendar-month {
       font-size: 20px;
       font-weight: 700;
-      color: #1A1A2E;
+      color: var(--text);
     }
 
     .calendar-nav {
@@ -810,7 +810,7 @@
     .entry-section-title {
       font-size: 14px;
       font-weight: 700;
-      color: #1A1A2E;
+      color: var(--text);
       margin-top: 16px;
       margin-bottom: 8px;
     }
@@ -985,7 +985,7 @@
       font-size: 24px;
       font-weight: 700;
       margin-bottom: 16px;
-      color: #1A1A2E;
+      color: var(--text);
     }
 
     .modal-text {
@@ -1823,7 +1823,11 @@
       }
 
       getTodayDate() {
+        // Vor 4 Uhr nachts zählt als "gestern" (Abend-Eintrag vom Vortag)
         const now = new Date();
+        if (now.getHours() < 4) {
+          now.setDate(now.getDate() - 1);
+        }
         const y = now.getFullYear();
         const m = String(now.getMonth() + 1).padStart(2, '0');
         const d = String(now.getDate()).padStart(2, '0');
@@ -1832,7 +1836,8 @@
 
       isMorningTime() {
         const hour = new Date().getHours();
-        return hour < 14;
+        // 4-13 Uhr = Morgen, 14-3 Uhr = Abend
+        return hour >= 4 && hour < 14;
       }
     }
 
@@ -2237,9 +2242,18 @@
               🎉 Alles erledigt heute!
             </div>
           ` : html`
-            <button class="btn btn-primary main-action-btn" onclick=${() => onNavigate('journal', isMorning ? 'morning' : 'evening')}>
-              📝 Tagebuch schreiben
-            </button>
+            <div style="display:flex;gap:10px">
+              <button class="btn main-action-btn" style=${'flex:1;font-size:15px;padding:16px;border-radius:14px;font-weight:600;border:none;cursor:pointer;' + (hasMorning ? 'background:var(--bg-alt);color:var(--text-secondary);opacity:0.7' : (isMorning ? 'background:var(--accent);color:#fff' : 'background:var(--card);color:var(--text);border:1px solid var(--border)'))}
+                onclick=${() => onNavigate('journal', 'morning')}
+                disabled=${hasMorning}>
+                🌅 ${hasMorning ? 'Morgens ✓' : 'Morgens'}
+              </button>
+              <button class="btn main-action-btn" style=${'flex:1;font-size:15px;padding:16px;border-radius:14px;font-weight:600;border:none;cursor:pointer;' + (hasEvening ? 'background:var(--bg-alt);color:var(--text-secondary);opacity:0.7' : (!isMorning ? 'background:var(--accent);color:#fff' : 'background:var(--card);color:var(--text);border:1px solid var(--border)'))}
+                onclick=${() => onNavigate('journal', 'evening')}
+                disabled=${hasEvening}>
+                🌙 ${hasEvening ? 'Abends ✓' : 'Abends'}
+              </button>
+            </div>
           `}
 
           ${streak > 0 ? html`
@@ -3078,7 +3092,7 @@
             <div class="settings-title">Über die App</div>
             <div class="settings-item">
               <div class="settings-label">Version</div>
-              <div class="settings-value">2.0.0</div>
+              <div class="settings-value">2.0.1</div>
             </div>
             <div class="settings-item">
               <div class="settings-label">Entwickelt mit ❤️</div>
