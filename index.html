@@ -1775,6 +1775,48 @@
 
       // ---- Habits CRUD ----
 
+      async getHabits() {
+        if (this.isDemo) {
+          return DEMO_DATA.habits || [];
+        }
+        if (!this.supabaseClient || !this.userId) return [];
+        try {
+          const result = await this._withRetry(async () =>
+            await this.supabaseClient.from('habits').select('*').eq('user_id', this.userId).order('created_at', { ascending: true }));
+          const habits = result.data || [];
+
+          // Lade Track-Daten der letzten 28 Tage für die 4-Wochen-Grafik
+          if (habits.length > 0) {
+            const since = new Date();
+            since.setDate(since.getDate() - 28);
+            const sinceStr = since.toISOString().split('T')[0];
+            try {
+              const tracksResult = await this._withRetry(async () =>
+                await this.supabaseClient.from('habit_tracks').select('habit_id, track_date')
+                  .eq('user_id', this.userId)
+                  .gte('track_date', sinceStr));
+              const tracks = tracksResult.data || [];
+              // Cache-Objekt pro Habit: { 'YYYY-MM-DD': true }
+              habits.forEach(h => { h._trackCache = {}; });
+              const habitMap = {};
+              habits.forEach(h => { habitMap[h.id] = h; });
+              tracks.forEach(t => {
+                if (habitMap[t.habit_id]) {
+                  habitMap[t.habit_id]._trackCache[t.track_date] = true;
+                }
+              });
+            } catch (e) {
+              console.error('getHabitTracks error:', e);
+            }
+          }
+
+          return habits;
+        } catch (e) {
+          console.error('getHabits error:', e);
+          return [];
+        }
+      }
+
       async addHabit(name) {
         if (!name || !name.trim()) return null;
         const trimmed = name.trim().slice(0, 100);
@@ -2288,17 +2330,20 @@
                   ${!habitsEditMode ? html`
                     <div class="habit-checkbox checked" onclick=${async () => {
                       await dataService.toggleHabit(habit.id, todayDate);
-                      app.render();
+                      const updatedHabits = await dataService.getHabits();
+                      app.setState({ habits: updatedHabits });
                     }}>
                       <span style="font-size: 12px;">✓</span>
                     </div>
                   ` : html`
                     <button style="background:none;border:none;color:#DC2626;cursor:pointer;font-size:16px;padding:4px 8px" onclick=${async () => {
-                      await dataService.deleteHabit(habit.id);
-                      if (dataService.isDemo) {
-                        app.setState({ habits: [...DEMO_DATA.habits] });
+                      try {
+                        await dataService.deleteHabit(habit.id);
+                        const updatedHabits = await dataService.getHabits();
+                        app.setState({ habits: updatedHabits });
+                      } catch (err) {
+                        showToast('Gewohnheit konnte nicht gelöscht werden', 'error');
                       }
-                      app.render();
                     }}>✕</button>
                   `}
                   <div class="habit-name">${escapeHtml(habit.name)}</div>
@@ -2313,22 +2358,34 @@
                   oninput=${e => { newHabitName = e.target.value; }}
                   onkeydown=${async e => {
                     if (e.key === 'Enter' && newHabitName.trim()) {
-                      const result = await dataService.addHabit(newHabitName);
-                      if (result) {
-                        newHabitName = '';
-                        if (dataService.isDemo) app.setState({ habits: [...DEMO_DATA.habits] });
-                        app.render();
+                      try {
+                        const result = await dataService.addHabit(newHabitName);
+                        if (result) {
+                          newHabitName = '';
+                          const updatedHabits = await dataService.getHabits();
+                          app.setState({ habits: updatedHabits });
+                        } else {
+                          showToast('Gewohnheit konnte nicht gespeichert werden', 'error');
+                        }
+                      } catch (err) {
+                        showToast('Fehler beim Speichern der Gewohnheit', 'error');
                       }
                     }
                   }}
                 />
                 <button class="btn btn-primary btn-small" style="min-width:40px" onclick=${async () => {
                   if (newHabitName.trim()) {
-                    const result = await dataService.addHabit(newHabitName);
-                    if (result) {
-                      newHabitName = '';
-                      if (dataService.isDemo) app.setState({ habits: [...DEMO_DATA.habits] });
-                      app.render();
+                    try {
+                      const result = await dataService.addHabit(newHabitName);
+                      if (result) {
+                        newHabitName = '';
+                        const updatedHabits = await dataService.getHabits();
+                        app.setState({ habits: updatedHabits });
+                      } else {
+                        showToast('Gewohnheit konnte nicht gespeichert werden', 'error');
+                      }
+                    } catch (err) {
+                      showToast('Fehler beim Speichern der Gewohnheit', 'error');
                     }
                   }
                 }}>+</button>
@@ -2346,6 +2403,7 @@
               <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:12px">📊 Letzte 4 Wochen</div>
               ${habits.map(habit => {
                 const days = [];
+                const trackCache = habit._trackCache || {};
                 for (let i = 27; i >= 0; i--) {
                   const d = new Date();
                   d.setDate(d.getDate() - i);
@@ -2354,7 +2412,7 @@
                   const dd = String(d.getDate()).padStart(2,'0');
                   const ds = y + '-' + m + '-' + dd;
                   const key = ds + '_' + habit.id;
-                  const done = dataService.isDemo ? !!DEMO_DATA.habitTracks[key] : false;
+                  const done = dataService.isDemo ? !!DEMO_DATA.habitTracks[key] : !!trackCache[ds];
                   days.push({ ds, done, day: d.getDay() });
                 }
                 const doneCount = days.filter(d => d.done).length;
@@ -3092,7 +3150,7 @@
             <div class="settings-title">Über die App</div>
             <div class="settings-item">
               <div class="settings-label">Version</div>
-              <div class="settings-value">2.0.2</div>
+              <div class="settings-value">2.0.3</div>
             </div>
             <div class="settings-item">
               <div class="settings-label">Entwickelt mit ❤️</div>
@@ -3258,6 +3316,7 @@
       async enterApp(ds) {
         const entry = await ds.getEntries();
         const streakData = await ds.getStreak();
+        const habits = await ds.getHabits();
         // Onboarding nur beim allerersten App-Start zeigen
         const isFirstTime = !localStorage.getItem('6min_onboarding_done');
         this.setState({
@@ -3266,7 +3325,7 @@
           authChecking: false,
           todayEntry: entry,
           streak: streakData.streak,
-          habits: ds.isDemo ? DEMO_DATA.habits : [],
+          habits,
           showOnboarding: isFirstTime
         });
       }
@@ -3336,6 +3395,11 @@
       };
 
       handleJournalClose = async () => {
+        // State-Cleanup: Journal-Antworten und Frage-Index zurücksetzen
+        journalCurrentQuestion = 0;
+        journalAnswers = {};
+        window._editContent = null;
+
         const { dataService } = this.state;
         const entry = await dataService.getEntries();
         const streakData = await dataService.getStreak();
@@ -3343,7 +3407,8 @@
           screen: 'dashboard',
           todayEntry: entry,
           streak: streakData.streak,
-          journalType: null
+          journalType: null,
+          backfillDate: null
         });
       };
 
@@ -3420,7 +3485,7 @@
                     onNavigate=${this.handleNavigate}
                     todayEntry=${todayEntry}
                     streak=${streak}
-                    habits=${dataService.isDemo ? DEMO_DATA.habits : []}
+                    habits=${this.state.habits || []}
                   />
                 ` : ''}
                 ${screen === 'journal' ? html`
