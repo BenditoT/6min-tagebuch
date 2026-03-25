@@ -2357,28 +2357,35 @@
                   value=${newHabitName}
                   oninput=${e => { newHabitName = e.target.value; }}
                   onkeydown=${async e => {
-                    if (e.key === 'Enter' && newHabitName.trim()) {
-                      try {
-                        const result = await dataService.addHabit(newHabitName);
-                        if (result) {
-                          newHabitName = '';
-                          const updatedHabits = await dataService.getHabits();
-                          app.setState({ habits: updatedHabits });
-                        } else {
-                          showToast('Gewohnheit konnte nicht gespeichert werden', 'error');
+                    if (e.key === 'Enter') {
+                      const val = newHabitName || e.target.value || '';
+                      if (val.trim()) {
+                        try {
+                          const result = await dataService.addHabit(val);
+                          if (result) {
+                            newHabitName = '';
+                            e.target.value = '';
+                            const updatedHabits = await dataService.getHabits();
+                            app.setState({ habits: updatedHabits });
+                          } else {
+                            showToast('Gewohnheit konnte nicht gespeichert werden', 'error');
+                          }
+                        } catch (err) {
+                          showToast('Fehler beim Speichern der Gewohnheit', 'error');
                         }
-                      } catch (err) {
-                        showToast('Fehler beim Speichern der Gewohnheit', 'error');
                       }
                     }
                   }}
                 />
-                <button class="btn btn-primary btn-small" style="min-width:40px" onclick=${async () => {
-                  if (newHabitName.trim()) {
+                <button class="btn btn-primary btn-small" style="min-width:40px" onclick=${async (e) => {
+                  const input = e.target.closest('div')?.querySelector('input');
+                  const val = newHabitName || (input && input.value) || '';
+                  if (val.trim()) {
                     try {
-                      const result = await dataService.addHabit(newHabitName);
+                      const result = await dataService.addHabit(val);
                       if (result) {
                         newHabitName = '';
+                        if (input) input.value = '';
                         const updatedHabits = await dataService.getHabits();
                         app.setState({ habits: updatedHabits });
                       } else {
