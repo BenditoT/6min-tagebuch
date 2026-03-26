@@ -1859,8 +1859,11 @@
         if (!this.supabaseClient) { console.error('[Habits] No supabaseClient!'); return { error: 'Kein Supabase-Client' }; }
         if (!this.userId) { console.error('[Habits] No userId!'); return { error: 'Nicht angemeldet (kein userId)' }; }
         try {
+          // month_date = erster Tag des aktuellen Monats (NOT NULL in DB)
+          const now = new Date();
+          const monthDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
           const result = await this._withRetry(async () =>
-            await this.supabaseClient.from('habits').insert({ user_id: this.userId, name: trimmed }).select().single());
+            await this.supabaseClient.from('habits').insert({ user_id: this.userId, name: trimmed, month_date: monthDate }).select().single());
           console.log('[Habits] Supabase result:', JSON.stringify(result));
           if (result.error) {
             console.error('[Habits] Supabase error:', result.error.message, result.error.details);
