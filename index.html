@@ -3320,6 +3320,8 @@
 
       async componentDidMount() {
         window._appNavigate = this.handleNavigate;
+        // Bridge: app.setState() für module-scope Komponenten (DashboardScreen etc.)
+        app.setState = (state) => this.setState(state);
         // iOS ITP Recovery: Falls localStorage gelöscht wurde, aus IndexedDB wiederherstellen
         await recoverDemoDataFromIDB();
         // Auto-connect Supabase wenn Credentials hardcoded sind

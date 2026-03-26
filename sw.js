@@ -1,7 +1,7 @@
 // sw.js — Service Worker für 6-Minuten-Tagebuch PWA
-// v2.0.4: Fix Quote-Card Dark Mode, Fix Journal Validation (sparse arrays), besseres Save-Logging
+// v2.0.7: Fix app.setState Bridge — Habits konnten nicht gespeichert werden weil app.setState nicht existierte
 
-const CACHE_VERSION = 'v2.0.6';
+const CACHE_VERSION = 'v2.0.7';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `runtime-${CACHE_VERSION}`;
 
