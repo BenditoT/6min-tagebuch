@@ -1843,23 +1843,32 @@
       }
 
       async addHabit(name) {
-        if (!name || !name.trim()) return null;
+        console.log('[Habits] addHabit called with:', name, '| isDemo:', this.isDemo, '| userId:', this.userId);
+        if (!name || !name.trim()) { console.warn('[Habits] Empty name'); return null; }
         const trimmed = name.trim().slice(0, 100);
 
         if (this.isDemo) {
           const newId = Date.now();
+          if (!DEMO_DATA.habits) DEMO_DATA.habits = [];
           DEMO_DATA.habits.push({ id: newId, name: trimmed, createdAt: Date.now() });
           saveDemoData();
+          console.log('[Habits] Demo habit saved:', trimmed, '| Total:', DEMO_DATA.habits.length);
           return { id: newId, name: trimmed };
         }
 
-        if (!this.supabaseClient || !this.userId) return null;
+        if (!this.supabaseClient) { console.error('[Habits] No supabaseClient!'); return null; }
+        if (!this.userId) { console.error('[Habits] No userId!'); return null; }
         try {
           const result = await this._withRetry(async () =>
             await this.supabaseClient.from('habits').insert({ user_id: this.userId, name: trimmed }).select().single());
+          console.log('[Habits] Supabase result:', JSON.stringify(result));
+          if (result.error) {
+            console.error('[Habits] Supabase error:', result.error.message, result.error.details);
+            return null;
+          }
           return result.data;
         } catch (e) {
-          console.error('addHabit error:', e);
+          console.error('[Habits] addHabit exception:', e);
           return null;
         }
       }
@@ -2379,24 +2388,28 @@
               <div style="display:flex;gap:8px;margin-top:8px">
                 <input type="text" maxlength="100" placeholder="Neue Gewohnheit…"
                   style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text)"
-                  value=${newHabitName}
                   oninput=${e => { newHabitName = e.target.value; }}
                   onkeydown=${async e => {
                     if (e.key === 'Enter') {
-                      const val = newHabitName || e.target.value || '';
-                      if (val.trim()) {
+                      e.preventDefault();
+                      const val = (e.target.value || newHabitName || '').trim();
+                      console.log('[Habits] Enter pressed, val:', val);
+                      if (val) {
                         try {
                           const result = await dataService.addHabit(val);
+                          console.log('[Habits] addHabit result:', result);
                           if (result) {
                             newHabitName = '';
                             e.target.value = '';
                             const updatedHabits = await dataService.getHabits();
                             app.setState({ habits: updatedHabits });
+                            showToast('Gewohnheit gespeichert ✓', 'success');
                           } else {
-                            showToast('Gewohnheit konnte nicht gespeichert werden', 'error');
+                            showToast('Gewohnheit konnte nicht gespeichert werden — prüfe die Console (F12)', 'error');
                           }
                         } catch (err) {
-                          showToast('Fehler beim Speichern der Gewohnheit', 'error');
+                          console.error('[Habits] Handler error:', err);
+                          showToast('Fehler: ' + (err.message || 'Unbekannt'), 'error');
                         }
                       }
                     }
@@ -2404,21 +2417,27 @@
                 />
                 <button class="btn btn-primary btn-small" style="min-width:40px" onclick=${async (e) => {
                   const input = e.target.closest('div')?.querySelector('input');
-                  const val = newHabitName || (input && input.value) || '';
-                  if (val.trim()) {
+                  const val = ((input && input.value) || newHabitName || '').trim();
+                  console.log('[Habits] + clicked, val:', val, '| input.value:', input?.value, '| newHabitName:', newHabitName);
+                  if (val) {
                     try {
                       const result = await dataService.addHabit(val);
+                      console.log('[Habits] addHabit result:', result);
                       if (result) {
                         newHabitName = '';
                         if (input) input.value = '';
                         const updatedHabits = await dataService.getHabits();
                         app.setState({ habits: updatedHabits });
+                        showToast('Gewohnheit gespeichert ✓', 'success');
                       } else {
-                        showToast('Gewohnheit konnte nicht gespeichert werden', 'error');
+                        showToast('Gewohnheit konnte nicht gespeichert werden — prüfe die Console (F12)', 'error');
                       }
                     } catch (err) {
-                      showToast('Fehler beim Speichern der Gewohnheit', 'error');
+                      console.error('[Habits] Handler error:', err);
+                      showToast('Fehler: ' + (err.message || 'Unbekannt'), 'error');
                     }
+                  } else {
+                    showToast('Bitte einen Namen eingeben', 'error');
                   }
                 }}>+</button>
               </div>
@@ -3185,7 +3204,7 @@
             <div class="settings-title">Über die App</div>
             <div class="settings-item">
               <div class="settings-label">Version</div>
-              <div class="settings-value">2.0.5</div>
+              <div class="settings-value">2.0.6</div>
             </div>
             <div class="settings-item">
               <div class="settings-label">Entwickelt mit ❤️</div>
@@ -3394,14 +3413,17 @@
         }
         freezeConfirmOpen = false;
         habitsEditMode = false;
+        newHabitName = '';
 
         if (screen === 'dashboard') {
           const entry = await dataService.getEntries();
           const streakData = await dataService.getStreak();
+          const habits = await dataService.getHabits();
           this.setState({
             screen,
             todayEntry: entry,
             streak: streakData.streak,
+            habits,
             journalType: null,
             backfillDate: null
           });
