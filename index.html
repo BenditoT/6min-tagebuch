@@ -443,18 +443,20 @@
     }
 
     .quote-card {
-      background: #1A1A2E;
+      background: linear-gradient(135deg, var(--accent) 0%, #2D2B55 100%);
       color: #FFFFFF;
       border-radius: 16px;
       padding: 24px;
       text-align: center;
       font-size: 18px;
       font-weight: 500;
+      font-style: italic;
       line-height: 1.6;
       min-height: 120px;
       display: flex;
       align-items: center;
       justify-content: center;
+      box-shadow: 0 4px 15px var(--shadow);
     }
 
     .streak-container {
@@ -1538,12 +1540,14 @@
         for (const f of arrayFields) {
           if (content[f] && Array.isArray(content[f])) {
             for (const item of content[f]) {
+              // Leere/undefined Einträge sind OK (User hat Feld übersprungen)
+              if (item == null || item === '') continue;
               if (typeof item !== 'string' || item.length > MAX_LEN) return false;
             }
           }
         }
         for (const f of stringFields) {
-          if (content[f] && (typeof content[f] !== 'string' || content[f].length > MAX_LEN)) return false;
+          if (content[f] && content[f] !== '' && (typeof content[f] !== 'string' || content[f].length > MAX_LEN)) return false;
         }
         return true;
       }
@@ -1551,9 +1555,18 @@
       async saveEntry(date, type, content) {
         const targetDate = date || this.getTodayDate();
 
+        // Bereinige sparse Arrays: undefined → ''
+        if (content && typeof content === 'object') {
+          for (const key of Object.keys(content)) {
+            if (Array.isArray(content[key])) {
+              content[key] = content[key].map(v => (v == null ? '' : v));
+            }
+          }
+        }
+
         // Validierung vor Speicherung
         if (content && typeof content === 'object' && !this._validateContent(content)) {
-          console.warn('[Save] Content validation failed');
+          console.warn('[Save] Content validation failed', JSON.stringify(content));
           return false;
         }
 
@@ -2517,7 +2530,9 @@
 
       const saveAndClose = async () => {
         try {
+          console.log('[Journal] Saving:', type, JSON.stringify(journalAnswers));
           const success = await dataService.saveEntry(backfillDate || null, type, journalAnswers);
+          console.log('[Journal] Save result:', success);
           if (success) {
             showToast('Eintrag gespeichert ✓', 'success');
             triggerConfetti();
@@ -2526,6 +2541,7 @@
             showToast('Speichern fehlgeschlagen. Bitte prüfe deine Verbindung und versuche es erneut.', 'error');
           }
         } catch (err) {
+          console.error('[Journal] Save error:', err);
           showToast('Fehler beim Speichern: ' + (err.message || 'Unbekannter Fehler'), 'error');
         }
       };
@@ -3157,7 +3173,7 @@
             <div class="settings-title">Über die App</div>
             <div class="settings-item">
               <div class="settings-label">Version</div>
-              <div class="settings-value">2.0.3</div>
+              <div class="settings-value">2.0.4</div>
             </div>
             <div class="settings-item">
               <div class="settings-label">Entwickelt mit ❤️</div>
