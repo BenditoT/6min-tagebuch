@@ -1844,7 +1844,7 @@
 
       async addHabit(name) {
         console.log('[Habits] addHabit called with:', name, '| isDemo:', this.isDemo, '| userId:', this.userId);
-        if (!name || !name.trim()) { console.warn('[Habits] Empty name'); return null; }
+        if (!name || !name.trim()) { console.warn('[Habits] Empty name'); return { error: 'Leerer Name' }; }
         const trimmed = name.trim().slice(0, 100);
 
         if (this.isDemo) {
@@ -1853,23 +1853,23 @@
           DEMO_DATA.habits.push({ id: newId, name: trimmed, createdAt: Date.now() });
           saveDemoData();
           console.log('[Habits] Demo habit saved:', trimmed, '| Total:', DEMO_DATA.habits.length);
-          return { id: newId, name: trimmed };
+          return { data: { id: newId, name: trimmed } };
         }
 
-        if (!this.supabaseClient) { console.error('[Habits] No supabaseClient!'); return null; }
-        if (!this.userId) { console.error('[Habits] No userId!'); return null; }
+        if (!this.supabaseClient) { console.error('[Habits] No supabaseClient!'); return { error: 'Kein Supabase-Client' }; }
+        if (!this.userId) { console.error('[Habits] No userId!'); return { error: 'Nicht angemeldet (kein userId)' }; }
         try {
           const result = await this._withRetry(async () =>
             await this.supabaseClient.from('habits').insert({ user_id: this.userId, name: trimmed }).select().single());
           console.log('[Habits] Supabase result:', JSON.stringify(result));
           if (result.error) {
             console.error('[Habits] Supabase error:', result.error.message, result.error.details);
-            return null;
+            return { error: 'DB: ' + result.error.message };
           }
-          return result.data;
+          return { data: result.data };
         } catch (e) {
           console.error('[Habits] addHabit exception:', e);
-          return null;
+          return { error: 'Exception: ' + (e.message || 'Unbekannt') };
         }
       }
 
@@ -2397,15 +2397,15 @@
                       if (val) {
                         try {
                           const result = await dataService.addHabit(val);
-                          console.log('[Habits] addHabit result:', result);
-                          if (result) {
+                          console.log('[Habits] addHabit result:', JSON.stringify(result));
+                          if (result?.data) {
                             newHabitName = '';
                             e.target.value = '';
                             const updatedHabits = await dataService.getHabits();
                             app.setState({ habits: updatedHabits });
                             showToast('Gewohnheit gespeichert ✓', 'success');
                           } else {
-                            showToast('Gewohnheit konnte nicht gespeichert werden — prüfe die Console (F12)', 'error');
+                            showToast('Fehler: ' + (result?.error || 'Unbekannt'), 'error');
                           }
                         } catch (err) {
                           console.error('[Habits] Handler error:', err);
@@ -2422,15 +2422,15 @@
                   if (val) {
                     try {
                       const result = await dataService.addHabit(val);
-                      console.log('[Habits] addHabit result:', result);
-                      if (result) {
+                      console.log('[Habits] addHabit result:', JSON.stringify(result));
+                      if (result?.data) {
                         newHabitName = '';
                         if (input) input.value = '';
                         const updatedHabits = await dataService.getHabits();
                         app.setState({ habits: updatedHabits });
                         showToast('Gewohnheit gespeichert ✓', 'success');
                       } else {
-                        showToast('Gewohnheit konnte nicht gespeichert werden — prüfe die Console (F12)', 'error');
+                        showToast('Fehler: ' + (result?.error || 'Unbekannt'), 'error');
                       }
                     } catch (err) {
                       console.error('[Habits] Handler error:', err);
