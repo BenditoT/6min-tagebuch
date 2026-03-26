@@ -1,7 +1,8 @@
 // sw.js — Service Worker für 6-Minuten-Tagebuch PWA
-// v2.0.7: Fix app.setState Bridge — Habits konnten nicht gespeichert werden weil app.setState nicht existierte
+// v2.0.8: Fix habit_tracks → habit_logs + track_date → log_date (DB schema mismatch)
+//        Gewohnheiten konnten nicht gespeichert werden weil Tabellennamen falsch waren
 
-const CACHE_VERSION = 'v2.0.7';
+const CACHE_VERSION = 'v2.0.8';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `runtime-${CACHE_VERSION}`;
 

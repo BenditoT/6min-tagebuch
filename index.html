@@ -1444,9 +1444,9 @@
         }
 
         try {
-          // 1. Alle Habit-Tracks löschen
+          // 1. Alle Habit-Logs löschen
           const r1 = await this._withRetry(async () =>
-            await this.supabaseClient.from('habit_tracks').delete().eq('user_id', this.userId));
+            await this.supabaseClient.from('habit_logs').delete().eq('user_id', this.userId));
           if (r1.error) throw r1.error;
 
           // 2. Alle Habits löschen
@@ -1761,15 +1761,15 @@
           const exists = await this.getHabitStatus(habitId, date);
           if (exists) {
             await this._withRetry(async () => await this.supabaseClient
-              .from('habit_tracks')
+              .from('habit_logs')
               .delete()
               .eq('user_id', this.userId)
               .eq('habit_id', habitId)
-              .eq('track_date', date));
+              .eq('log_date', date));
           } else {
             await this._withRetry(async () => await this.supabaseClient
-              .from('habit_tracks')
-              .insert({ user_id: this.userId, habit_id: habitId, track_date: date }));
+              .from('habit_logs')
+              .insert({ user_id: this.userId, habit_id: habitId, log_date: date, completed: true }));
           }
           return !exists;
         } catch (e) {
@@ -1785,11 +1785,11 @@
         if (!this.supabaseClient) return false;
         try {
           const result = await this._withRetry(async () => await this.supabaseClient
-            .from('habit_tracks')
+            .from('habit_logs')
             .select('id')
             .eq('user_id', this.userId)
             .eq('habit_id', habitId)
-            .eq('track_date', date)
+            .eq('log_date', date)
             .maybeSingle());
           return !!result.data;
         } catch (e) {
@@ -1817,9 +1817,10 @@
             const sinceStr = since.toISOString().split('T')[0];
             try {
               const tracksResult = await this._withRetry(async () =>
-                await this.supabaseClient.from('habit_tracks').select('habit_id, track_date')
+                await this.supabaseClient.from('habit_logs').select('habit_id, log_date')
                   .eq('user_id', this.userId)
-                  .gte('track_date', sinceStr));
+                  .gte('log_date', sinceStr)
+                  .eq('completed', true));
               const tracks = tracksResult.data || [];
               // Cache-Objekt pro Habit: { 'YYYY-MM-DD': true }
               habits.forEach(h => { h._trackCache = {}; });
@@ -1827,7 +1828,7 @@
               habits.forEach(h => { habitMap[h.id] = h; });
               tracks.forEach(t => {
                 if (habitMap[t.habit_id]) {
-                  habitMap[t.habit_id]._trackCache[t.track_date] = true;
+                  habitMap[t.habit_id]._trackCache[t.log_date] = true;
                 }
               });
             } catch (e) {
@@ -1889,9 +1890,9 @@
 
         if (!this.supabaseClient || !this.userId) return false;
         try {
-          // Erst Tracks löschen, dann Habit
+          // Erst Logs löschen, dann Habit
           await this._withRetry(async () =>
-            await this.supabaseClient.from('habit_tracks').delete().eq('habit_id', habitId).eq('user_id', this.userId));
+            await this.supabaseClient.from('habit_logs').delete().eq('habit_id', habitId).eq('user_id', this.userId));
           const result = await this._withRetry(async () =>
             await this.supabaseClient.from('habits').delete().eq('id', habitId).eq('user_id', this.userId));
           return !result.error;
