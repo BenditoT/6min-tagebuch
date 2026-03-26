@@ -1,8 +1,7 @@
 // sw.js — Service Worker für 6-Minuten-Tagebuch PWA
-// v2.0.8: Fix habit_tracks → habit_logs + track_date → log_date (DB schema mismatch)
-//        Gewohnheiten konnten nicht gespeichert werden weil Tabellennamen falsch waren
+// v2.0.9: Gewohnheiten löschen + umsortieren (↑↓) + Checkbox-Status
 
-const CACHE_VERSION = 'v2.0.8';
+const CACHE_VERSION = 'v2.0.9';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `runtime-${CACHE_VERSION}`;
 

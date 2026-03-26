@@ -1800,9 +1800,47 @@
 
       // ---- Habits CRUD ----
 
+      // Sortierreihenfolge aus localStorage laden/speichern
+      _getHabitOrder() {
+        try {
+          const key = `habitOrder_${this.userId || 'demo'}`;
+          const stored = localStorage.getItem(key);
+          return stored ? JSON.parse(stored) : null;
+        } catch { return null; }
+      }
+      _saveHabitOrder(orderedIds) {
+        try {
+          const key = `habitOrder_${this.userId || 'demo'}`;
+          localStorage.setItem(key, JSON.stringify(orderedIds));
+        } catch {}
+      }
+      _applyHabitOrder(habits) {
+        const order = this._getHabitOrder();
+        if (!order || order.length === 0) return habits;
+        const map = {};
+        habits.forEach(h => { map[h.id] = h; });
+        const ordered = [];
+        // Erst die gespeicherten IDs in Reihenfolge
+        order.forEach(id => { if (map[id]) { ordered.push(map[id]); delete map[id]; } });
+        // Dann neue Habits die noch nicht in der Sortierung sind
+        Object.values(map).forEach(h => ordered.push(h));
+        return ordered;
+      }
+
+      reorderHabit(habits, habitId, direction) {
+        const idx = habits.findIndex(h => h.id === habitId);
+        if (idx < 0) return habits;
+        const newIdx = direction === 'up' ? idx - 1 : idx + 1;
+        if (newIdx < 0 || newIdx >= habits.length) return habits;
+        const copy = [...habits];
+        [copy[idx], copy[newIdx]] = [copy[newIdx], copy[idx]];
+        this._saveHabitOrder(copy.map(h => h.id));
+        return copy;
+      }
+
       async getHabits() {
         if (this.isDemo) {
-          return DEMO_DATA.habits || [];
+          return this._applyHabitOrder(DEMO_DATA.habits || []);
         }
         if (!this.supabaseClient || !this.userId) return [];
         try {
@@ -1836,7 +1874,7 @@
             }
           }
 
-          return habits;
+          return this._applyHabitOrder(habits);
         } catch (e) {
           console.error('getHabits error:', e);
           return [];
@@ -2363,28 +2401,46 @@
               </button>
             </div>
             <div class="habits-list">
-              ${(habits || []).map(habit => html`
-                <div key=${habit.id} class="habit-item">
+              ${(habits || []).map((habit, idx) => html`
+                <div key=${habit.id} class="habit-item" style=${habitsEditMode ? 'display:flex;align-items:center;gap:4px' : ''}>
                   ${!habitsEditMode ? html`
-                    <div class="habit-checkbox checked" onclick=${async () => {
+                    <div class="habit-checkbox ${habit._trackCache?.[todayDate] ? 'checked' : ''}" onclick=${async () => {
                       await dataService.toggleHabit(habit.id, todayDate);
                       const updatedHabits = await dataService.getHabits();
                       app.setState({ habits: updatedHabits });
                     }}>
-                      <span style="font-size: 12px;">✓</span>
+                      ${habit._trackCache?.[todayDate] ? html`<span style="font-size:12px">✓</span>` : ''}
                     </div>
                   ` : html`
-                    <button style="background:none;border:none;color:#DC2626;cursor:pointer;font-size:16px;padding:4px 8px" onclick=${async () => {
+                    <div style="display:flex;flex-direction:column;gap:2px;margin-right:2px">
+                      <button style="background:none;border:none;color:${idx === 0 ? 'var(--border)' : 'var(--text-secondary)'};cursor:${idx === 0 ? 'default' : 'pointer'};font-size:11px;padding:0;line-height:1"
+                        onclick=${() => {
+                          if (idx === 0) return;
+                          const reordered = dataService.reorderHabit(habits, habit.id, 'up');
+                          app.setState({ habits: reordered });
+                        }}>▲</button>
+                      <button style="background:none;border:none;color:${idx === habits.length - 1 ? 'var(--border)' : 'var(--text-secondary)'};cursor:${idx === habits.length - 1 ? 'default' : 'pointer'};font-size:11px;padding:0;line-height:1"
+                        onclick=${() => {
+                          if (idx === habits.length - 1) return;
+                          const reordered = dataService.reorderHabit(habits, habit.id, 'down');
+                          app.setState({ habits: reordered });
+                        }}>▼</button>
+                    </div>
+                  `}
+                  <div class="habit-name" style="flex:1">${escapeHtml(habit.name)}</div>
+                  ${habitsEditMode ? html`
+                    <button style="background:none;border:none;color:#DC2626;cursor:pointer;font-size:14px;padding:4px 8px;flex-shrink:0" onclick=${async () => {
+                      if (!confirm('Gewohnheit „' + habit.name + '" wirklich löschen?')) return;
                       try {
                         await dataService.deleteHabit(habit.id);
                         const updatedHabits = await dataService.getHabits();
                         app.setState({ habits: updatedHabits });
+                        showToast('Gelöscht ✓', 'success');
                       } catch (err) {
-                        showToast('Gewohnheit konnte nicht gelöscht werden', 'error');
+                        showToast('Fehler beim Löschen: ' + (err.message || 'Unbekannt'), 'error');
                       }
                     }}>✕</button>
-                  `}
-                  <div class="habit-name">${escapeHtml(habit.name)}</div>
+                  ` : ''}
                 </div>
               `)}
             </div>
