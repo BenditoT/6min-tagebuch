@@ -443,8 +443,8 @@
     }
 
     .quote-card {
-      background: linear-gradient(135deg, var(--accent) 0%, #2D2B55 100%);
-      color: #FFFFFF;
+      background: linear-gradient(135deg, #F5E6CC 0%, #E8B86D 100%);
+      color: #3D2E0A;
       border-radius: 16px;
       padding: 24px;
       text-align: center;
@@ -457,6 +457,18 @@
       align-items: center;
       justify-content: center;
       box-shadow: 0 4px 15px var(--shadow);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) .quote-card {
+        background: linear-gradient(135deg, #3D2E0A 0%, #5C4A1A 100%);
+        color: #F5E6CC;
+      }
+    }
+
+    [data-theme="dark"] .quote-card {
+      background: linear-gradient(135deg, #3D2E0A 0%, #5C4A1A 100%);
+      color: #F5E6CC;
     }
 
     .streak-container {
@@ -3173,7 +3185,7 @@
             <div class="settings-title">Über die App</div>
             <div class="settings-item">
               <div class="settings-label">Version</div>
-              <div class="settings-value">2.0.4</div>
+              <div class="settings-value">2.0.5</div>
             </div>
             <div class="settings-item">
               <div class="settings-label">Entwickelt mit ❤️</div>
@@ -3605,21 +3617,30 @@
         .then(reg => {
           console.log('[App] SW registered:', reg.scope);
 
-          // Smart Update-Check: Visibility-API + Exponential Backoff (statt 60s Polling)
-          let swUpdateInterval = 3600000; // 1h Basis
+          // Smart Update-Check: bei Tab-Fokus + alle 30 Minuten
           let swFailures = 0;
           const smartSWUpdate = () => {
             if (document.hidden) return;
-            reg.update().then(() => { swFailures = 0; swUpdateInterval = 3600000; })
-              .catch(() => { swFailures++; swUpdateInterval = Math.min(3600000 * Math.pow(2, swFailures), 21600000); });
+            reg.update().then(() => { swFailures = 0; })
+              .catch(() => { swFailures++; });
           };
           document.addEventListener('visibilitychange', () => { if (!document.hidden) smartSWUpdate(); });
-          setInterval(smartSWUpdate, 14400000); // Fallback alle 4h
+          setInterval(smartSWUpdate, 1800000); // Alle 30 Min
 
-          // Reload nach Controller-Wechsel (sicher, kein Race mit SKIP_WAITING)
+          // Reload nach Controller-Wechsel — NICHT während Journal-Eingabe
           let refreshing = false;
           navigator.serviceWorker.addEventListener('controllerchange', () => {
             if (refreshing) return;
+            // Nicht reloaden wenn User gerade im Journal tippt
+            const isInJournal = !!document.querySelector('.journal-screen');
+            if (isInJournal) {
+              console.log('[App] SW updated, but user is in journal — deferring reload');
+              const banner = document.createElement('div');
+              banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#E8B86D;color:#1A1A2E;padding:10px 16px;text-align:center;font-size:13px;font-weight:600';
+              banner.textContent = 'Update bereit — wird nach dem Speichern geladen';
+              document.body.prepend(banner);
+              return;
+            }
             refreshing = true;
             location.reload();
           });

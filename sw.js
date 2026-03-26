@@ -1,7 +1,7 @@
 // sw.js — Service Worker für 6-Minuten-Tagebuch PWA
 // v2.0.4: Fix Quote-Card Dark Mode, Fix Journal Validation (sparse arrays), besseres Save-Logging
 
-const CACHE_VERSION = 'v2.0.4';
+const CACHE_VERSION = 'v2.0.5';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `runtime-${CACHE_VERSION}`;
 
@@ -49,8 +49,8 @@ self.addEventListener('install', (event) => {
           );
         });
       })
-      // NICHT sofort skipWaiting — warten auf User-Bestätigung via Message
-      .then(() => console.log('[SW] Install complete, waiting for SKIP_WAITING message'))
+      // Sofort aktivieren damit neue Versionen immer durchkommen
+      .then(() => { console.log('[SW] Install complete, activating immediately'); self.skipWaiting(); })
       .catch(err => console.error('[SW] Install failed:', err))
   );
 });
