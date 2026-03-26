@@ -966,6 +966,87 @@
     .feedback-counter { font-size: 11px; color: var(--text-secondary, #999); margin-top: 4px; text-align: right; }
     .feedback-actions { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
 
+    /* Foto des Tages */
+    .daily-photo-container {
+      display: flex; align-items: center; gap: 12px;
+      background: var(--card); padding: 16px 20px;
+      border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+      margin: 12px 0;
+    }
+
+    .daily-photo-thumbnail {
+      width: 60px; height: 60px; border-radius: 50%;
+      object-fit: cover; cursor: pointer;
+      border: 2px solid var(--accent-light);
+      flex-shrink: 0;
+    }
+
+    .daily-photo-placeholder {
+      width: 60px; height: 60px; border-radius: 50%;
+      background: var(--bg-alt); border: 2px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px; color: var(--text-secondary);
+      flex-shrink: 0;
+    }
+
+    .daily-photo-info {
+      flex: 1; display: flex; flex-direction: column; gap: 4px;
+    }
+
+    .daily-photo-label {
+      font-size: 12px; color: var(--text-secondary); font-weight: 500;
+    }
+
+    .daily-photo-date {
+      font-size: 14px; color: var(--text); font-weight: 600;
+    }
+
+    .daily-photo-input {
+      display: none;
+    }
+
+    .daily-photo-button {
+      background: var(--accent-light); color: var(--accent);
+      border: none; padding: 8px 12px; border-radius: 8px;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      transition: opacity 0.2s; flex-shrink: 0;
+    }
+
+    .daily-photo-button:active {
+      opacity: 0.8;
+    }
+
+    /* Lightbox Overlay für Fotos */
+    .photo-lightbox {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.95); z-index: 300;
+      display: flex; align-items: center; justify-content: center;
+      padding: 16px;
+    }
+
+    .photo-lightbox-image {
+      max-width: 100%; max-height: 90vh; object-fit: contain;
+    }
+
+    .photo-lightbox-close {
+      position: absolute; top: 16px; right: 16px;
+      background: rgba(255,255,255,0.2); border: none;
+      color: #fff; font-size: 28px; cursor: pointer;
+      width: 44px; height: 44px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .photo-lightbox-close:active {
+      background: rgba(255,255,255,0.3);
+    }
+
+    /* Foto in Entry-Detail */
+    .entry-detail-photo {
+      width: 100%; max-height: 400px; object-fit: cover;
+      border-radius: 12px; margin-bottom: 16px; cursor: pointer;
+      display: block;
+    }
+
     /* Supabase Setup Modal */
     .modal-overlay {
       position: fixed;
@@ -1320,6 +1401,32 @@
     }
 
     const DEMO_DATA = loadDemoData();
+
+    // ============================================================================
+    // IMAGE COMPRESSION UTILITY
+    // ============================================================================
+
+    function compressImage(file, maxWidth = 800, quality = 0.7) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let w = img.width, h = img.height;
+            if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth; }
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+          };
+          img.onerror = reject;
+          img.src = e.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
 
     // ============================================================================
     // DATA SERVICE
@@ -1940,6 +2047,49 @@
         }
       }
 
+      // ---- Foto des Tages ----
+
+      async saveDailyPhoto(date, base64Data) {
+        const targetDate = date || this.getTodayDate();
+        if (this.isDemo) {
+          if (!DEMO_DATA.photos) DEMO_DATA.photos = {};
+          DEMO_DATA.photos[targetDate] = base64Data;
+          saveDemoData();
+          return true;
+        }
+        // Cloud: speichere in localStorage als Fallback (Supabase Storage TODO)
+        try {
+          localStorage.setItem(`photo_${this.userId}_${targetDate}`, base64Data);
+          return true;
+        } catch (e) {
+          console.error('saveDailyPhoto error:', e);
+          return false;
+        }
+      }
+
+      async getDailyPhoto(date) {
+        const targetDate = date || this.getTodayDate();
+        if (this.isDemo) {
+          return DEMO_DATA.photos?.[targetDate] || null;
+        }
+        try {
+          return localStorage.getItem(`photo_${this.userId}_${targetDate}`) || null;
+        } catch { return null; }
+      }
+
+      async deleteDailyPhoto(date) {
+        const targetDate = date || this.getTodayDate();
+        if (this.isDemo) {
+          if (DEMO_DATA.photos) delete DEMO_DATA.photos[targetDate];
+          saveDemoData();
+          return true;
+        }
+        try {
+          localStorage.removeItem(`photo_${this.userId}_${targetDate}`);
+          return true;
+        } catch { return false; }
+      }
+
       getTodayDate() {
         // Vor 4 Uhr nachts zählt als "gestern" (Abend-Eintrag vom Vortag)
         const now = new Date();
@@ -2286,7 +2436,7 @@
     let habitsEditMode = false;
     let newHabitName = '';
 
-    function DashboardScreen({ dataService, onNavigate, todayEntry, streak, habits }) {
+    function DashboardScreen({ dataService, onNavigate, todayEntry, streak, habits, todayPhoto }) {
       const todayDate = dataService.getTodayDate();
       const isMorning = dataService.isMorningTime();
       const hasMorning = todayEntry?.morning;
@@ -2303,9 +2453,46 @@
 
       const quote = QUOTES[Math.floor(Math.random() * QUOTES.length)];
 
+      // Foto-Input Handler
+      const handlePhotoUpload = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+          showToast('Bild wird komprimiert...', 'info');
+          const compressed = await compressImage(file, 800, 0.7);
+          await dataService.saveDailyPhoto(todayDate, compressed);
+          app.setState({ todayPhoto: compressed });
+          showToast('Foto gespeichert! 📸', 'success');
+          e.target.value = '';
+        } catch (err) {
+          console.error('Photo upload error:', err);
+          showToast('Foto-Upload fehlgeschlagen', 'error');
+          e.target.value = '';
+        }
+      };
+
       return html`
         <div class="screen dashboard-screen active">
           <div class="quote-card">"${quote}"</div>
+
+          <div class="daily-photo-container">
+            <input id="photo-input" class="daily-photo-input" type="file" accept="image/*" capture="environment" onchange=${handlePhotoUpload} />
+            ${todayPhoto ? html`
+              <img src=${todayPhoto} class="daily-photo-thumbnail" onclick=${() => {
+                archiveSelectedPhoto = todayPhoto;
+                app.render();
+              }} alt="Photo of the day" />
+            ` : html`
+              <div class="daily-photo-placeholder">📸</div>
+            `}
+            <div class="daily-photo-info">
+              <div class="daily-photo-label">Bild des Tages</div>
+              <div class="daily-photo-date">${todayDate}</div>
+            </div>
+            <button class="daily-photo-button" onclick=${() => document.getElementById('photo-input').click()}>
+              📸 Hochladen
+            </button>
+          </div>
 
           <div class="streak-container">
             <div class="streak-info">
@@ -2543,6 +2730,13 @@
               })}
             </div>
           ` : ''}
+
+          ${archiveSelectedPhoto ? html`
+            <div class="photo-lightbox" onclick=${e => { if (e.target === e.currentTarget) { archiveSelectedPhoto = null; app.render(); } }}>
+              <button class="photo-lightbox-close" onclick=${() => { archiveSelectedPhoto = null; app.render(); }}>×</button>
+              <img src=${archiveSelectedPhoto} class="photo-lightbox-image" alt="Photo fullscreen" />
+            </div>
+          ` : ''}
         </div>
       `;
     }
@@ -2716,6 +2910,7 @@
     let archiveViewMonth = new Date();
     let archiveSelectedDate = null;
     let archiveSelectedEntry = null;
+    let archiveSelectedPhoto = null; // Foto für Lightbox-Overlay
     let archiveMonthEntryDates = []; // Dates mit Einträgen im aktuellen Monat
     let archiveMonthLoaded = ''; // "YYYY-MM" des geladenen Monats
 
@@ -2782,11 +2977,16 @@
         if (!dateStr) return;
         archiveSelectedDate = dateStr;
         archiveSelectedEntry = null;
+        archiveSelectedPhoto = null;
         app.render(); // Sofort UI updaten (loading state)
         const requestId = ++_archiveRequestId;
         const entry = await dataService.getEntries(dateStr);
         if (requestId !== _archiveRequestId) return; // Veralteter Request → ignorieren
         archiveSelectedEntry = entry;
+        // Lade auch das Foto für diesen Tag
+        const photo = await dataService.getDailyPhoto(dateStr);
+        if (requestId !== _archiveRequestId) return;
+        archiveSelectedPhoto = photo;
         app.render();
       };
 
@@ -2850,6 +3050,11 @@
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
                 <div style="font-size:12px;color:var(--text-secondary)">${archiveSelectedDate}</div>
               </div>
+              ${archiveSelectedPhoto ? html`
+                <img src=${archiveSelectedPhoto} class="entry-detail-photo" onclick=${() => {
+                  app.render();
+                }} alt="Photo from ${archiveSelectedDate}" />
+              ` : ''}
               ${archiveSelectedEntry.morning ? html`
                 <div style="display:flex;justify-content:space-between;align-items:center">
                   <div class="entry-section-title">🌅 Morgens</div>
@@ -2885,6 +3090,13 @@
               }}>
                 📝 Eintrag nachtragen
               </button>
+            </div>
+          ` : ''}
+
+          ${archiveSelectedPhoto ? html`
+            <div class="photo-lightbox" onclick=${e => { if (e.target === e.currentTarget) { archiveSelectedPhoto = null; app.render(); } }}>
+              <button class="photo-lightbox-close" onclick=${() => { archiveSelectedPhoto = null; app.render(); }}>×</button>
+              <img src=${archiveSelectedPhoto} class="photo-lightbox-image" alt="Photo fullscreen" />
             </div>
           ` : ''}
         </div>
@@ -3373,7 +3585,8 @@
           habits: [],
           journalType: null,
           backfillDate: null,
-          showOnboarding: false
+          showOnboarding: false,
+          todayPhoto: null         // Base64 Photo des Tages
         };
         this.unsubAuth = null;
       }
@@ -3481,11 +3694,13 @@
           const entry = await dataService.getEntries();
           const streakData = await dataService.getStreak();
           const habits = await dataService.getHabits();
+          const photo = await dataService.getDailyPhoto();
           this.setState({
             screen,
             todayEntry: entry,
             streak: streakData.streak,
             habits,
+            todayPhoto: photo,
             journalType: null,
             backfillDate: null
           });
@@ -3522,10 +3737,12 @@
         const { dataService } = this.state;
         const entry = await dataService.getEntries();
         const streakData = await dataService.getStreak();
+        const photo = await dataService.getDailyPhoto();
         this.setState({
           screen: 'dashboard',
           todayEntry: entry,
           streak: streakData.streak,
+          todayPhoto: photo,
           journalType: null,
           backfillDate: null
         });
@@ -3556,7 +3773,7 @@
       render() {
         const {
           screen, dataService, authChecking, todayEntry, streak,
-          journalType, backfillDate, showOnboarding
+          journalType, backfillDate, showOnboarding, todayPhoto
         } = this.state;
 
         // Loading state while checking session
@@ -3605,6 +3822,7 @@
                     todayEntry=${todayEntry}
                     streak=${streak}
                     habits=${this.state.habits || []}
+                    todayPhoto=${todayPhoto}
                   />
                 ` : ''}
                 ${screen === 'journal' ? html`

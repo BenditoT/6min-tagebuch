@@ -1,7 +1,7 @@
 // sw.js — Service Worker für 6-Minuten-Tagebuch PWA
-// v2.0.9: Gewohnheiten löschen + umsortieren (↑↓) + Checkbox-Status
+// v2.1.0: Bild des Tages Feature (Kamera, Kompression, Galerie, Lightbox)
 
-const CACHE_VERSION = 'v2.0.9';
+const CACHE_VERSION = 'v2.1.0';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `runtime-${CACHE_VERSION}`;
 
