@@ -1,7 +1,7 @@
 // sw.js — Service Worker für 6-Minuten-Tagebuch PWA
-// v2.1.0: Bild des Tages Feature (Kamera, Kompression, Galerie, Lightbox)
+// v2.2.0: Feedback-Umsetzung (Abend-Frage, Design-Update, Archiv-Nachtrag, Zitat-Redesign)
 
-const CACHE_VERSION = 'v2.1.0';
+const CACHE_VERSION = 'v2.2.0';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `runtime-${CACHE_VERSION}`;
 

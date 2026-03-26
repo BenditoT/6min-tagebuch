@@ -435,40 +435,91 @@
     /* Dashboard */
     .dashboard-screen {
       padding: 20px;
-      padding-top: 24px;
+      padding-top: max(24px, env(safe-area-inset-top, 24px));
       padding-bottom: 100px;
       display: flex !important;
       flex-direction: column;
-      gap: 20px;
+      gap: 16px;
+    }
+
+    .dashboard-greeting {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+      padding: 0 4px;
+    }
+
+    .dashboard-date {
+      font-size: 13px;
+      color: var(--text-secondary);
+      padding: 0 4px;
+      margin-top: -8px;
     }
 
     .quote-card {
-      background: linear-gradient(135deg, #F5E6CC 0%, #E8B86D 100%);
-      color: #3D2E0A;
-      border-radius: 16px;
-      padding: 24px;
+      background: linear-gradient(135deg, #FFF8EE 0%, #FFECD2 50%, #FCE4C3 100%);
+      color: #5C3D0A;
+      border-radius: 20px;
+      padding: 28px 24px;
       text-align: center;
-      font-size: 18px;
+      font-size: 17px;
       font-weight: 500;
       font-style: italic;
-      line-height: 1.6;
+      line-height: 1.7;
       min-height: 120px;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 15px var(--shadow);
+      box-shadow: 0 4px 20px rgba(232, 184, 109, 0.15);
+      border: 1px solid rgba(232, 184, 109, 0.2);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .quote-card::before {
+      content: '✦';
+      position: absolute;
+      top: 12px;
+      left: 16px;
+      font-size: 14px;
+      font-style: normal;
+      opacity: 0.3;
+      color: #D4A04A;
+    }
+
+    .quote-card::after {
+      content: '✦';
+      position: absolute;
+      bottom: 12px;
+      right: 16px;
+      font-size: 14px;
+      font-style: normal;
+      opacity: 0.3;
+      color: #D4A04A;
     }
 
     @media (prefers-color-scheme: dark) {
       :root:not([data-theme="light"]) .quote-card {
-        background: linear-gradient(135deg, #3D2E0A 0%, #5C4A1A 100%);
+        background: linear-gradient(135deg, #2A2215 0%, #3D3020 50%, #4A3A28 100%);
         color: #F5E6CC;
+        border-color: rgba(232, 184, 109, 0.15);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      }
+      :root:not([data-theme="light"]) .quote-card::before,
+      :root:not([data-theme="light"]) .quote-card::after {
+        color: #E8B86D;
       }
     }
 
     [data-theme="dark"] .quote-card {
-      background: linear-gradient(135deg, #3D2E0A 0%, #5C4A1A 100%);
+      background: linear-gradient(135deg, #2A2215 0%, #3D3020 50%, #4A3A28 100%);
       color: #F5E6CC;
+      border-color: rgba(232, 184, 109, 0.15);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+    [data-theme="dark"] .quote-card::before,
+    [data-theme="dark"] .quote-card::after {
+      color: #E8B86D;
     }
 
     .streak-container {
@@ -478,7 +529,8 @@
       background: var(--card);
       padding: 16px 20px;
       border-radius: 16px;
-      box-shadow: 0 2px 8px var(--shadow);
+      box-shadow: 0 2px 10px var(--shadow);
+      border: 1px solid var(--border);
     }
 
     .streak-info {
@@ -653,14 +705,15 @@
 
     .progress-bar {
       flex: 1;
-      height: 4px;
+      height: 5px;
       background: var(--border);
-      border-radius: 2px;
+      border-radius: 3px;
       overflow: hidden;
+      transition: background 0.3s ease;
     }
 
     .progress-bar.active {
-      background: var(--accent);
+      background: linear-gradient(90deg, #E8B86D, #D4A04A);
     }
 
     .question-section {
@@ -671,9 +724,25 @@
     }
 
     .question-label {
-      font-size: 16px;
+      font-size: 18px;
       font-weight: 600;
       color: var(--text);
+      line-height: 1.4;
+      padding: 16px 20px;
+      background: linear-gradient(135deg, #FFF8EE 0%, #FFECD2 100%);
+      border-radius: 14px;
+      border: 1px solid rgba(232, 184, 109, 0.15);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) .question-label {
+        background: linear-gradient(135deg, #2A2215 0%, #3D3020 100%);
+        border-color: rgba(232, 184, 109, 0.1);
+      }
+    }
+    [data-theme="dark"] .question-label {
+      background: linear-gradient(135deg, #2A2215 0%, #3D3020 100%);
+      border-color: rgba(232, 184, 109, 0.1);
     }
 
     .question-inputs {
@@ -970,8 +1039,7 @@
     .daily-photo-container {
       display: flex; align-items: center; gap: 12px;
       background: var(--card); padding: 16px 20px;
-      border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-      margin: 12px 0;
+      border-radius: 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.06);
     }
 
     .daily-photo-thumbnail {
@@ -2471,8 +2539,18 @@
         }
       };
 
+      // Greeting based on time of day
+      const hour = new Date().getHours();
+      const greeting = hour < 4 ? 'Gute Nacht' : hour < 12 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend';
+      const weekDayNames = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+      const monthNamesShort = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+      const now = new Date();
+      const dateDisplay = `${weekDayNames[now.getDay()]}, ${now.getDate()}. ${monthNamesShort[now.getMonth()]} ${now.getFullYear()}`;
+
       return html`
         <div class="screen dashboard-screen active">
+          <div class="dashboard-greeting">${greeting} ✨</div>
+          <div class="dashboard-date">${dateDisplay}</div>
           <div class="quote-card">"${quote}"</div>
 
           <div class="daily-photo-container">
@@ -2543,17 +2621,17 @@
           ` : ''}
 
           ${allDone ? html`
-            <div style="text-align: center; padding: 24px; background: var(--bg-alt); border-radius: 16px; font-size: 18px; font-weight: 600; color: var(--text);">
+            <div style="text-align: center; padding: 24px; background: linear-gradient(135deg, #E8F5E9, #C8E6C9); border-radius: 20px; font-size: 18px; font-weight: 600; color: #2E7D32; box-shadow: 0 2px 12px rgba(46,125,50,0.1);">
               🎉 Alles erledigt heute!
             </div>
           ` : html`
-            <div style="display:flex;gap:10px">
-              <button class="btn main-action-btn" style=${'flex:1;font-size:15px;padding:16px;border-radius:14px;font-weight:600;border:none;cursor:pointer;' + (hasMorning ? 'background:var(--bg-alt);color:var(--text-secondary);opacity:0.7' : (isMorning ? 'background:var(--accent);color:#fff' : 'background:var(--card);color:var(--text);border:1px solid var(--border)'))}
+            <div style="display:flex;gap:12px">
+              <button class="btn main-action-btn" style=${'flex:1;font-size:15px;padding:18px 16px;border-radius:16px;font-weight:600;border:none;cursor:pointer;transition:all 0.2s;box-shadow:0 2px 8px rgba(0,0,0,0.06);' + (hasMorning ? 'background:var(--bg-alt);color:var(--text-secondary);opacity:0.6' : (isMorning ? 'background:linear-gradient(135deg, #E8B86D, #D4A04A);color:#fff;box-shadow:0 4px 15px rgba(232,184,109,0.3)' : 'background:var(--card);color:var(--text);border:1px solid var(--border)'))}
                 onclick=${() => onNavigate('journal', 'morning')}
                 disabled=${hasMorning}>
                 🌅 ${hasMorning ? 'Morgens ✓' : 'Morgens'}
               </button>
-              <button class="btn main-action-btn" style=${'flex:1;font-size:15px;padding:16px;border-radius:14px;font-weight:600;border:none;cursor:pointer;' + (hasEvening ? 'background:var(--bg-alt);color:var(--text-secondary);opacity:0.7' : (!isMorning ? 'background:var(--accent);color:#fff' : 'background:var(--card);color:var(--text);border:1px solid var(--border)'))}
+              <button class="btn main-action-btn" style=${'flex:1;font-size:15px;padding:18px 16px;border-radius:16px;font-weight:600;border:none;cursor:pointer;transition:all 0.2s;box-shadow:0 2px 8px rgba(0,0,0,0.06);' + (hasEvening ? 'background:var(--bg-alt);color:var(--text-secondary);opacity:0.6' : (!isMorning ? 'background:linear-gradient(135deg, #E8B86D, #D4A04A);color:#fff;box-shadow:0 4px 15px rgba(232,184,109,0.3)' : 'background:var(--card);color:var(--text);border:1px solid var(--border)'))}
                 onclick=${() => onNavigate('journal', 'evening')}
                 disabled=${hasEvening}>
                 🌙 ${hasEvening ? 'Abends ✓' : 'Abends'}
@@ -2753,6 +2831,7 @@
       ],
       evening: [
         { key: 'great_things', label: 'Tolle Dinge, die ich heute erlebt habe', count: 3 },
+        { key: 'good_deed', label: 'Wem habe ich heute etwas Gutes getan?', count: 1 },
         { key: 'learned', label: 'Was habe ich heute gelernt?', count: 1 },
         { key: 'improve', label: 'Was könnte ich morgen besser machen?', count: 1 }
       ]
@@ -2927,6 +3006,7 @@
       if (content.wonderful) parts.push({ label: 'Wunderbar wäre', items: content.wonderful.filter(Boolean) });
       if (content.affirmation) parts.push({ label: 'Heute will ich sein', items: [content.affirmation] });
       if (content.great_things) parts.push({ label: 'Tolle Dinge', items: content.great_things.filter(Boolean) });
+      if (content.good_deed) parts.push({ label: 'Gutes getan für', items: [content.good_deed] });
       if (content.learned) parts.push({ label: 'Gelernt', items: [content.learned] });
       if (content.improve) parts.push({ label: 'Besser machen', items: [content.improve] });
       return parts;
@@ -3048,12 +3128,24 @@
           ${archiveSelectedEntry && (archiveSelectedEntry.morning || archiveSelectedEntry.evening) ? html`
             <div class="entry-detail">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-                <div style="font-size:12px;color:var(--text-secondary)">${archiveSelectedDate}</div>
+                <div style="font-size:13px;font-weight:600;color:var(--text)">${archiveSelectedDate}</div>
               </div>
               ${archiveSelectedPhoto ? html`
-                <img src=${archiveSelectedPhoto} class="entry-detail-photo" onclick=${() => {
-                  app.render();
-                }} alt="Photo from ${archiveSelectedDate}" />
+                <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:16px;padding:12px;background:var(--bg-alt);border-radius:12px">
+                  <img src=${archiveSelectedPhoto} style="width:80px;height:80px;object-fit:cover;border-radius:10px;cursor:pointer;flex-shrink:0" onclick=${() => {
+                    app.render();
+                  }} alt="Photo from ${archiveSelectedDate}" />
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">📸 Bild des Tages</div>
+                    <div style="font-size:13px;color:var(--text);line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical">${
+                      archiveSelectedEntry.morning?.grateful?.[0]
+                        ? 'Dankbar für: ' + archiveSelectedEntry.morning.grateful[0]
+                        : archiveSelectedEntry.evening?.great_things?.[0]
+                          ? archiveSelectedEntry.evening.great_things[0]
+                          : 'Tippe für Vollbild'
+                    }</div>
+                  </div>
+                </div>
               ` : ''}
               ${archiveSelectedEntry.morning ? html`
                 <div style="display:flex;justify-content:space-between;align-items:center">
@@ -3065,7 +3157,12 @@
                   }}>✎ Bearbeiten</button>
                 </div>
                 ${renderEntry(archiveSelectedEntry.morning, 'morning')}
-              ` : ''}
+              ` : html`
+                <button class="btn btn-small" style="width:100%;margin-bottom:12px;background:var(--bg-alt);color:var(--text);border:1px dashed var(--border);border-radius:12px;padding:12px;font-size:13px;cursor:pointer" onclick=${() => {
+                  window._backfillDate = archiveSelectedDate;
+                  if (window._appNavigate) window._appNavigate('journal', 'morning');
+                }}>🌅 Morgens nachtragen</button>
+              `}
               ${archiveSelectedEntry.evening ? html`
                 <div style="display:flex;justify-content:space-between;align-items:center">
                   <div class="entry-section-title">🌙 Abends</div>
@@ -3076,7 +3173,12 @@
                   }}>✎ Bearbeiten</button>
                 </div>
                 ${renderEntry(archiveSelectedEntry.evening, 'evening')}
-              ` : ''}
+              ` : html`
+                <button class="btn btn-small" style="width:100%;margin-top:8px;background:var(--bg-alt);color:var(--text);border:1px dashed var(--border);border-radius:12px;padding:12px;font-size:13px;cursor:pointer" onclick=${() => {
+                  window._backfillDate = archiveSelectedDate;
+                  if (window._appNavigate) window._appNavigate('journal', 'evening');
+                }}>🌙 Abends nachtragen</button>
+              `}
             </div>
           ` : ''}
 
@@ -3476,7 +3578,7 @@
             <div class="settings-title">Über die App</div>
             <div class="settings-item">
               <div class="settings-label">Version</div>
-              <div class="settings-value">2.0.6</div>
+              <div class="settings-value">2.2.0</div>
             </div>
             <div class="settings-item">
               <div class="settings-label">Entwickelt mit ❤️</div>
