@@ -1,7 +1,7 @@
 // sw.js — Service Worker für 6-Minuten-Tagebuch PWA
-// v2.2.1: iOS Gallery-Fix (capture-Attribut entfernt für Galerie-Zugriff)
+// v2.3.0: Wochenchallenges (52 Wochen), iOS Gallery-Fix
 
-const CACHE_VERSION = 'v2.2.1';
+const CACHE_VERSION = 'v2.3.0';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `runtime-${CACHE_VERSION}`;
 

@@ -522,6 +522,185 @@
       color: #E8B86D;
     }
 
+    /* Weekly Challenge Widget */
+    .challenge-widget {
+      background: linear-gradient(135deg, #F0FFF4 0%, #E6FFED 50%, #DCFCE7 100%);
+      border-radius: 16px;
+      padding: 18px 20px;
+      border: 1px solid rgba(34, 197, 94, 0.15);
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .challenge-widget:active { transform: scale(0.98); }
+    .challenge-widget-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .challenge-widget-kw {
+      font-size: 11px;
+      font-weight: 600;
+      color: #16a34a;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .challenge-widget-icon {
+      font-size: 24px;
+    }
+    .challenge-widget-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #14532D;
+      margin-bottom: 4px;
+      line-height: 1.3;
+    }
+    .challenge-widget-desc {
+      font-size: 13px;
+      color: #166534;
+      line-height: 1.5;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .challenge-widget-done {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 10px;
+      font-size: 12px;
+      color: #16a34a;
+      font-weight: 600;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) .challenge-widget {
+        background: linear-gradient(135deg, #0D2818 0%, #14532D 50%, #1A4A2E 100%);
+        border-color: rgba(34, 197, 94, 0.2);
+      }
+      :root:not([data-theme="light"]) .challenge-widget-title { color: #BBF7D0; }
+      :root:not([data-theme="light"]) .challenge-widget-desc { color: #86EFAC; }
+      :root:not([data-theme="light"]) .challenge-widget-kw { color: #4ADE80; }
+    }
+    [data-theme="dark"] .challenge-widget {
+      background: linear-gradient(135deg, #0D2818 0%, #14532D 50%, #1A4A2E 100%);
+      border-color: rgba(34, 197, 94, 0.2);
+    }
+    [data-theme="dark"] .challenge-widget-title { color: #BBF7D0; }
+    [data-theme="dark"] .challenge-widget-desc { color: #86EFAC; }
+    [data-theme="dark"] .challenge-widget-kw { color: #4ADE80; }
+
+    /* Challenge Detail Overlay */
+    .challenge-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      animation: fadeIn 0.2s ease;
+    }
+    .challenge-detail {
+      background: var(--bg);
+      border-radius: 24px 24px 0 0;
+      padding: 28px 24px 40px;
+      width: 100%;
+      max-width: 500px;
+      max-height: 85vh;
+      overflow-y: auto;
+      animation: slideUp 0.3s ease;
+    }
+    @keyframes slideUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+    .challenge-detail-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .challenge-detail-icon { font-size: 40px; }
+    .challenge-detail-close {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: var(--bg-alt);
+      border: none;
+      font-size: 18px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--text-secondary);
+    }
+    .challenge-detail-kw {
+      font-size: 12px;
+      font-weight: 600;
+      color: #16a34a;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+    .challenge-detail-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 12px;
+      line-height: 1.3;
+    }
+    .challenge-detail-desc {
+      font-size: 15px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+    .challenge-rating {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+    .challenge-star {
+      font-size: 32px;
+      cursor: pointer;
+      transition: transform 0.15s ease;
+      filter: grayscale(1);
+      opacity: 0.4;
+    }
+    .challenge-star.active {
+      filter: none;
+      opacity: 1;
+    }
+    .challenge-star:active { transform: scale(1.2); }
+    .challenge-note {
+      width: 100%;
+      min-height: 80px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      font-size: 14px;
+      background: var(--bg-alt);
+      color: var(--text);
+      resize: vertical;
+      font-family: inherit;
+    }
+    .challenge-save-btn {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 16px;
+      transition: opacity 0.2s;
+    }
+    .challenge-save-btn:active { opacity: 0.8; }
+
     .streak-container {
       display: flex;
       align-items: center;
@@ -1377,6 +1556,87 @@
 
     const MILESTONES = [7, 14, 30, 60, 100, 365];
 
+    // ============================================================================
+    // WOCHENCHALLENGES (52 Wochen, inspiriert vom 6-Minuten-Tagebuch)
+    // ============================================================================
+
+    const WEEKLY_CHALLENGES = [
+      // --- Q1: Grundlagen ---
+      { week: 1, title: "Dankbarkeits-Vertiefung", description: "Schreibe diese Woche jeden Tag 5 statt 3 Dinge auf, für die du dankbar bist. Achte besonders auf kleine, alltägliche Momente.", category: "dankbarkeit", icon: "🙏" },
+      { week: 2, title: "Komplimente verteilen", description: "Mache jeden Tag einem anderen Menschen ein ehrliches, spezifisches Kompliment. Beobachte, wie es euch beide verändert.", category: "sozial", icon: "💬" },
+      { week: 3, title: "Digital Detox am Abend", description: "Lege dein Handy ab 20 Uhr beiseite. Nutze die Zeit für Lesen, Gespräche oder Stille.", category: "achtsamkeit", icon: "📵" },
+      { week: 4, title: "Morgenroutine etablieren", description: "Stehe diese Woche jeden Tag 15 Minuten früher auf und nutze die Zeit nur für dich — Tagebuch, Tee, Stille.", category: "selbstfuersorge", icon: "🌅" },
+      { week: 5, title: "Bewegung in den Alltag", description: "Baue jeden Tag mindestens 20 Minuten Bewegung ein — Spaziergang, Yoga, Tanzen. Ohne Leistungsdruck.", category: "koerper", icon: "🚶" },
+      { week: 6, title: "Gedanken beobachten", description: "Beobachte deine Gedanken, ohne sie zu bewerten. Notiere abends 3 wiederkehrende Gedankenmuster.", category: "reflexion", icon: "🧠" },
+      { week: 7, title: "Kreativ ohne Ziel", description: "Tue jeden Tag etwas Kreatives — zeichnen, schreiben, musizieren, kochen. Ohne Ergebnis, nur für den Prozess.", category: "kreativitaet", icon: "🎨" },
+      { week: 8, title: "Körper-Scan", description: "Nimm dir jeden Abend 5 Minuten für einen Körper-Scan: Spüre von den Zehen bis zum Kopf in deinen Körper hinein.", category: "koerper", icon: "🧘" },
+      { week: 9, title: "Loslassen üben", description: "Trenne dich diese Woche jeden Tag von einem Gegenstand, der dir nicht mehr dient. Spüre die Leichtigkeit.", category: "loslassen", icon: "🍃" },
+      { week: 10, title: "Ziele visualisieren", description: "Schreibe dein wichtigstes Ziel morgens auf und stelle es dir 2 Minuten bildlich vor — als wäre es bereits Realität.", category: "ziele", icon: "🎯" },
+      { week: 11, title: "Gelassenheit trainieren", description: "Wenn etwas Unerwartetes passiert, halte 3 Sekunden inne, bevor du reagierst. Atme tief ein und aus.", category: "gelassenheit", icon: "☁️" },
+      { week: 12, title: "Freude aktiv suchen", description: "Plane jeden Tag bewusst einen kleinen Freude-Moment ein — dein Lieblingslied, ein gutes Essen, ein Sonnenuntergang.", category: "freude", icon: "✨" },
+      { week: 13, title: "Quartals-Rückblick", description: "Blättere durch deine Einträge der letzten 12 Wochen. Was hat sich verändert? Wofür bist du dankbar? Was willst du beibehalten?", category: "reflexion", icon: "📖" },
+
+      // --- Q2: Vertiefung ---
+      { week: 14, title: "Dankbarkeitsbrief", description: "Schreibe diese Woche einen echten Brief an jemanden, dem du dankbar bist. Du musst ihn nicht abschicken — aber du darfst.", category: "dankbarkeit", icon: "✉️" },
+      { week: 15, title: "Achtsam essen", description: "Esse mindestens eine Mahlzeit am Tag ganz bewusst — ohne Handy, ohne Bildschirm. Schmecke jeden Bissen.", category: "achtsamkeit", icon: "🍽️" },
+      { week: 16, title: "Zuhören lernen", description: "Übe aktives Zuhören: Lass dein Gegenüber ausreden, stelle Fragen, wiederhole in eigenen Worten.", category: "sozial", icon: "👂" },
+      { week: 17, title: "Nein sagen", description: "Sage diese Woche bewusst Nein zu einer Sache, die dir Energie raubt. Dein Nein ist ein Ja zu dir selbst.", category: "selbstfuersorge", icon: "🛡️" },
+      { week: 18, title: "Neue Gewohnheit testen", description: "Wähle eine kleine neue Gewohnheit und setze sie 7 Tage lang um. Verknüpfe sie mit einer bestehenden Routine.", category: "gewohnheiten", icon: "🔄" },
+      { week: 19, title: "Stärken erkennen", description: "Frage 3 Menschen, die dich gut kennen: Was ist meine größte Stärke? Schreibe die Antworten auf.", category: "reflexion", icon: "💪" },
+      { week: 20, title: "Musik als Medizin", description: "Erstelle eine Playlist, die dich glücklich macht. Höre sie jeden Morgen auf dem Weg zur Arbeit.", category: "kreativitaet", icon: "🎵" },
+      { week: 21, title: "Naturverbindung", description: "Verbringe jeden Tag mindestens 15 Minuten draußen in der Natur — bewusst, ohne Kopfhörer.", category: "koerper", icon: "🌿" },
+      { week: 22, title: "Vergeben üben", description: "Denke an eine Person, der du grollst. Schreibe auf, warum. Dann schreibe: 'Ich lasse los.' Du tust es für dich.", category: "loslassen", icon: "🕊️" },
+      { week: 23, title: "Vision Board", description: "Sammle Bilder, Worte, Zitate, die deine Träume verkörpern. Klebe sie zusammen oder erstelle ein digitales Board.", category: "ziele", icon: "🗺️" },
+      { week: 24, title: "Stille aushalten", description: "Sitz jeden Tag 10 Minuten in Stille — ohne Musik, ohne Meditation-App. Nur du und die Stille.", category: "gelassenheit", icon: "🤫" },
+      { week: 25, title: "Freude teilen", description: "Teile jeden Tag eine Freude mit jemandem — ein Foto, eine Geschichte, eine Einladung zum Kaffee.", category: "freude", icon: "🎁" },
+      { week: 26, title: "Halbjahres-Reflexion", description: "Halbzeit! Lies deine Einträge der letzten 6 Monate. Schreibe 3 Erkenntnisse und 3 Wünsche für die zweite Hälfte.", category: "reflexion", icon: "⏳" },
+
+      // --- Q3: Wachstum ---
+      { week: 27, title: "Dankbarkeit für den Körper", description: "Danke deinem Körper jeden Morgen für 3 konkrete Dinge, die er für dich tut. Deine Augen, deine Hände, dein Herz.", category: "dankbarkeit", icon: "❤️" },
+      { week: 28, title: "Medienfreier Tag", description: "Wähle einen Tag diese Woche komplett ohne soziale Medien. Beobachte, was sich verändert.", category: "achtsamkeit", icon: "🔇" },
+      { week: 29, title: "Jemandem helfen", description: "Tue jeden Tag etwas Gutes für einen anderen Menschen — ohne Gegenleistung und ohne es an die große Glocke zu hängen.", category: "sozial", icon: "🤝" },
+      { week: 30, title: "Schlaf-Hygiene", description: "Gehe diese Woche jeden Abend zur gleichen Zeit ins Bett. Kein Bildschirm 30 Min. vorher. Dunkel, kühl, ruhig.", category: "selbstfuersorge", icon: "😴" },
+      { week: 31, title: "Gewohnheiten-Audit", description: "Liste alle deine täglichen Gewohnheiten auf. Markiere: Welche dienen dir? Welche nicht? Streiche eine schlechte.", category: "gewohnheiten", icon: "📋" },
+      { week: 32, title: "Werte definieren", description: "Schreibe deine 5 wichtigsten Werte auf. Lebst du sie? Wo ist die größte Lücke zwischen Wert und Realität?", category: "reflexion", icon: "⚖️" },
+      { week: 33, title: "Etwas Neues lernen", description: "Lerne diese Woche etwas völlig Neues — ein Rezept, ein Wort in einer Fremdsprache, eine Technik.", category: "kreativitaet", icon: "📚" },
+      { week: 34, title: "Atem-Übungen", description: "Starte jeden Tag mit 5 Minuten bewusstem Atmen: 4 Sekunden ein, 4 halten, 6 aus. Die einfachste Meditation.", category: "koerper", icon: "💨" },
+      { week: 35, title: "Digitaler Ballast", description: "Lösche 10 Apps, die du nicht brauchst. Melde dich von 5 Newslettern ab. Räume dein digitales Zuhause auf.", category: "loslassen", icon: "🗑️" },
+      { week: 36, title: "90-Tage-Ziel setzen", description: "Setze dir ein konkretes Ziel für die nächsten 90 Tage. Schreibe es SMART: Spezifisch, Messbar, Attraktiv, Realistisch, Terminiert.", category: "ziele", icon: "📌" },
+      { week: 37, title: "Akzeptanz üben", description: "Sage diese Woche bei Dingen, die du nicht ändern kannst: 'Es ist, wie es ist.' Und dann lenke deine Energie auf das, was du ändern kannst.", category: "gelassenheit", icon: "🌊" },
+      { week: 38, title: "Freude-Tagebuch", description: "Notiere abends 5 Momente des Tages, die dich zum Lächeln gebracht haben — auch die ganz kleinen.", category: "freude", icon: "😊" },
+      { week: 39, title: "Dreivierteljahres-Check", description: "Schau zurück: Welche Challenge hat dich am meisten berührt? Welche Gewohnheit ist geblieben? Was überrascht dich?", category: "reflexion", icon: "🔍" },
+
+      // --- Q4: Integration ---
+      { week: 40, title: "Dankbarkeit zeigen", description: "Sage diese Woche 3 Menschen persönlich, wofür du ihnen dankbar bist. Schau ihnen dabei in die Augen.", category: "dankbarkeit", icon: "🌟" },
+      { week: 41, title: "Achtsames Gehen", description: "Gehe jeden Tag 10 Minuten achtsam: Spüre den Boden unter deinen Füßen, die Luft, die Geräusche.", category: "achtsamkeit", icon: "👣" },
+      { week: 42, title: "Beziehungen pflegen", description: "Melde dich bei 3 Menschen, die dir wichtig sind, aber die du lange nicht gesprochen hast. Ohne Grund, einfach so.", category: "sozial", icon: "📱" },
+      { week: 43, title: "Selbstmitgefühl", description: "Sprich diese Woche mit dir selbst wie mit deinem besten Freund. Ersetze innere Kritik durch Verständnis.", category: "selbstfuersorge", icon: "🫂" },
+      { week: 44, title: "Gewohnheits-Stacking", description: "Verknüpfe deine beste neue Gewohnheit mit einer bestehenden: 'Nach dem Zähneputzen meditiere ich 3 Minuten.'", category: "gewohnheiten", icon: "🧱" },
+      { week: 45, title: "Lebenslinie zeichnen", description: "Zeichne dein Leben als Linie: Hochs und Tiefs. Was waren die Wendepunkte? Was hast du daraus gelernt?", category: "reflexion", icon: "📈" },
+      { week: 46, title: "Schreiben als Therapie", description: "Schreibe 15 Minuten lang frei, ohne abzusetzen. Kein Thema, kein Ziel. Lass die Gedanken fließen.", category: "kreativitaet", icon: "✍️" },
+      { week: 47, title: "Kalt duschen", description: "Beende deine Dusche diese Woche mit 30 Sekunden kaltem Wasser. Spüre die Lebendigkeit danach.", category: "koerper", icon: "🚿" },
+      { week: 48, title: "Erwartungen loslassen", description: "Gehe in jede Situation diese Woche ohne Erwartung. Beobachte, wie sich deine Zufriedenheit verändert.", category: "loslassen", icon: "🎈" },
+      { week: 49, title: "Bucket-List schreiben", description: "Schreibe 20 Dinge auf, die du in deinem Leben noch erleben möchtest. Wähle eins davon und plane den ersten Schritt.", category: "ziele", icon: "📝" },
+      { week: 50, title: "Dankbarer Rückblick", description: "Lies alle deine Tagebuch-Einträge des Jahres. Markiere die schönsten Momente. Staune, wie viel Gutes passiert ist.", category: "dankbarkeit", icon: "🌈" },
+      { week: 51, title: "Brief an dein zukünftiges Ich", description: "Schreibe einen Brief an dich selbst in einem Jahr. Was wünschst du dir? Was willst du bewahren?", category: "reflexion", icon: "💌" },
+      { week: 52, title: "Jahresabschluss & Neubeginn", description: "Feiere dich! Du hast 52 Wochen lang an dir gearbeitet. Schreibe 3 Dinge, die dieses Jahr besonders gemacht haben.", category: "freude", icon: "🎉" },
+    ];
+
+    function getISOWeekNumber(date) {
+      const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+      d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+      const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+      return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+    }
+
+    function getCurrentWeekChallenge() {
+      const now = new Date();
+      const weekNum = getISOWeekNumber(now);
+      // Wrap around: week 53+ maps to week 1
+      const idx = ((weekNum - 1) % 52);
+      return { ...WEEKLY_CHALLENGES[idx], weekNum };
+    }
+
     // Demo-Daten: Lade aus localStorage oder verwende Defaults
     const DEMO_STORAGE_KEY = '6min_demo_data';
     const DEMO_DEFAULTS = {
@@ -1388,6 +1648,7 @@
       ],
       habitTracks: {},
       weeklyReflections: {},
+      challengeReflections: {},
       freezesRemaining: 2,
       frozenDates: {}
     };
@@ -1891,6 +2152,56 @@
         } catch (e) {
           console.error('getAllReflectionWeeks error:', e);
           return [];
+        }
+      }
+
+      // ---- Challenge Reflection Methods ----
+
+      async saveChallengeReflection(weekNum, year, rating, note) {
+        const key = `${year}_W${weekNum}`;
+        if (this.isDemo) {
+          if (!DEMO_DATA.challengeReflections) DEMO_DATA.challengeReflections = {};
+          DEMO_DATA.challengeReflections[key] = { rating, note, completedAt: new Date().toISOString() };
+          saveDemoData();
+          return true;
+        }
+        if (!this.supabaseClient) return false;
+        try {
+          const result = await this._withRetry(async () => await this.supabaseClient
+            .from('challenge_reflections')
+            .upsert({
+              user_id: this.userId,
+              week_number: weekNum,
+              year: year,
+              rating: rating,
+              note: note || '',
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'user_id,week_number,year' }));
+          return !result.error;
+        } catch (e) {
+          console.error('saveChallengeReflection error:', e);
+          return false;
+        }
+      }
+
+      async getChallengeReflection(weekNum, year) {
+        const key = `${year}_W${weekNum}`;
+        if (this.isDemo) {
+          return DEMO_DATA.challengeReflections?.[key] || null;
+        }
+        if (!this.supabaseClient) return null;
+        try {
+          const result = await this._withRetry(async () => await this.supabaseClient
+            .from('challenge_reflections')
+            .select('rating, note, updated_at')
+            .eq('user_id', this.userId)
+            .eq('week_number', weekNum)
+            .eq('year', year)
+            .maybeSingle());
+          return result.data || null;
+        } catch (e) {
+          console.error('getChallengeReflection error:', e);
+          return null;
         }
       }
 
@@ -2553,6 +2864,81 @@
           <div class="dashboard-date">${dateDisplay}</div>
           <div class="quote-card">"${quote}"</div>
 
+          ${(() => {
+            const challenge = getCurrentWeekChallenge();
+            const isCompleted = challengeReflectionLoaded && challengeRating > 0;
+            return html`
+              <div class="challenge-widget" onclick=${async () => {
+                showChallengeOverlay = true;
+                // Lade bestehende Reflexion falls vorhanden
+                const year = new Date().getFullYear();
+                const existing = await dataService.getChallengeReflection(challenge.weekNum, year);
+                if (existing) {
+                  challengeRating = existing.rating || 0;
+                  challengeNote = existing.note || '';
+                  challengeReflectionLoaded = existing;
+                } else {
+                  challengeRating = 0;
+                  challengeNote = '';
+                  challengeReflectionLoaded = null;
+                }
+                app.render();
+              }}>
+                <div class="challenge-widget-header">
+                  <div class="challenge-widget-kw">KW ${challenge.weekNum} · Wochenchallenge</div>
+                  <div class="challenge-widget-icon">${challenge.icon}</div>
+                </div>
+                <div class="challenge-widget-title">${challenge.title}</div>
+                <div class="challenge-widget-desc">${challenge.description}</div>
+                ${isCompleted ? html`
+                  <div class="challenge-widget-done">✅ Reflexion gespeichert · ${'⭐'.repeat(challengeRating)}</div>
+                ` : ''}
+              </div>
+            `;
+          })()}
+
+          ${showChallengeOverlay ? (() => {
+            const challenge = getCurrentWeekChallenge();
+            const year = new Date().getFullYear();
+            return html`
+              <div class="challenge-overlay" onclick=${(e) => { if (e.target === e.currentTarget) { showChallengeOverlay = false; app.render(); } }}>
+                <div class="challenge-detail">
+                  <div class="challenge-detail-header">
+                    <div class="challenge-detail-icon">${challenge.icon}</div>
+                    <button class="challenge-detail-close" onclick=${() => { showChallengeOverlay = false; app.render(); }}>✕</button>
+                  </div>
+                  <div class="challenge-detail-kw">Kalenderwoche ${challenge.weekNum}</div>
+                  <div class="challenge-detail-title">${challenge.title}</div>
+                  <div class="challenge-detail-desc">${challenge.description}</div>
+
+                  <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:12px;text-align:center">Wie hat die Challenge geklappt?</div>
+                  <div class="challenge-rating">
+                    ${[1,2,3,4,5].map(star => html`
+                      <span class="challenge-star ${challengeRating >= star ? 'active' : ''}" onclick=${() => { challengeRating = star; app.render(); }}>⭐</span>
+                    `)}
+                  </div>
+
+                  <textarea class="challenge-note" placeholder="Optional: Was hast du erlebt? Was nimmst du mit?" value=${challengeNote} oninput=${(e) => { challengeNote = e.target.value; }}></textarea>
+
+                  <button class="challenge-save-btn" onclick=${async () => {
+                    if (challengeRating === 0) { showToast('Bitte mindestens 1 Stern vergeben', 'error'); return; }
+                    const success = await dataService.saveChallengeReflection(challenge.weekNum, year, challengeRating, challengeNote);
+                    if (success) {
+                      challengeReflectionLoaded = { rating: challengeRating, note: challengeNote };
+                      showChallengeOverlay = false;
+                      showToast('Reflexion gespeichert! 🌟', 'success');
+                    } else {
+                      showToast('Speichern fehlgeschlagen', 'error');
+                    }
+                    app.render();
+                  }}>
+                    ${challengeRating > 0 ? `Reflexion speichern · ${'⭐'.repeat(challengeRating)}` : 'Bewerte die Challenge'}
+                  </button>
+                </div>
+              </div>
+            `;
+          })() : ''}
+
           <div class="daily-photo-container">
             <input id="photo-input" class="daily-photo-input" type="file" accept="image/*" onchange=${handlePhotoUpload} />
             ${todayPhoto ? html`
@@ -2984,6 +3370,12 @@
     // ============================================================================
     // COMPONENT: Archive/Calendar
     // ============================================================================
+
+    // Globaler State für Challenge-Overlay
+    let showChallengeOverlay = false;
+    let challengeRating = 0;
+    let challengeNote = '';
+    let challengeReflectionLoaded = null; // { rating, note } wenn geladen
 
     // Globaler State für Kalender-Monat (persistiert zwischen Re-Renders)
     let archiveViewMonth = new Date();
@@ -3578,7 +3970,7 @@
             <div class="settings-title">Über die App</div>
             <div class="settings-item">
               <div class="settings-label">Version</div>
-              <div class="settings-value">2.2.1</div>
+              <div class="settings-value">2.3.0</div>
             </div>
             <div class="settings-item">
               <div class="settings-label">Entwickelt mit ❤️</div>
@@ -3748,6 +4140,17 @@
         const entry = await ds.getEntries();
         const streakData = await ds.getStreak();
         const habits = await ds.getHabits();
+        // Challenge-Reflexion vorladen
+        try {
+          const ch = getCurrentWeekChallenge();
+          const year = new Date().getFullYear();
+          const existing = await ds.getChallengeReflection(ch.weekNum, year);
+          if (existing) {
+            challengeRating = existing.rating || 0;
+            challengeNote = existing.note || '';
+            challengeReflectionLoaded = existing;
+          }
+        } catch (_) {}
         // Onboarding nur beim allerersten App-Start zeigen
         const isFirstTime = !localStorage.getItem('6min_onboarding_done');
         this.setState({
