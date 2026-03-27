@@ -2554,7 +2554,7 @@
           <div class="quote-card">"${quote}"</div>
 
           <div class="daily-photo-container">
-            <input id="photo-input" class="daily-photo-input" type="file" accept="image/*" capture="environment" onchange=${handlePhotoUpload} />
+            <input id="photo-input" class="daily-photo-input" type="file" accept="image/*" onchange=${handlePhotoUpload} />
             ${todayPhoto ? html`
               <img src=${todayPhoto} class="daily-photo-thumbnail" onclick=${() => {
                 archiveSelectedPhoto = todayPhoto;
@@ -3578,7 +3578,7 @@
             <div class="settings-title">Über die App</div>
             <div class="settings-item">
               <div class="settings-label">Version</div>
-              <div class="settings-value">2.2.0</div>
+              <div class="settings-value">2.2.1</div>
             </div>
             <div class="settings-item">
               <div class="settings-label">Entwickelt mit ❤️</div>

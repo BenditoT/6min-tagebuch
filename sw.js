@@ -1,7 +1,7 @@
 // sw.js — Service Worker für 6-Minuten-Tagebuch PWA
-// v2.2.0: Feedback-Umsetzung (Abend-Frage, Design-Update, Archiv-Nachtrag, Zitat-Redesign)
+// v2.2.1: iOS Gallery-Fix (capture-Attribut entfernt für Galerie-Zugriff)
 
-const CACHE_VERSION = 'v2.2.0';
+const CACHE_VERSION = 'v2.2.1';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `runtime-${CACHE_VERSION}`;
 
