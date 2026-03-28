@@ -1,7 +1,7 @@
 // sw.js — Service Worker für 6-Minuten-Tagebuch PWA
-// v2.4.0: Supabase RLS komplett, Design-Feintuning, DSGVO challenge_reflections
+// v2.5.0: 12 neue Features — Foto-Sync, Offline-First, Streak-Freeze, Mood-Chart, PDF-Export, Share-Quote, Stats-Dashboard, Push-Notifications, Skeleton-Loading, Toast-Upgrade, Demo→Cloud Migration, Design-Polish
 
-const CACHE_VERSION = 'v2.4.0';
+const CACHE_VERSION = 'v2.5.0';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `runtime-${CACHE_VERSION}`;
 

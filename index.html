@@ -522,7 +522,7 @@
     }
 
     .quote-card {
-      background: linear-gradient(135deg, rgba(255, 248, 238, 0.9) 0%, rgba(255, 236, 210, 0.85) 50%, rgba(252, 228, 195, 0.8) 100%);
+      background: linear-gradient(135deg, #fdf6e3 0%, #f5e6c8 30%, #ede0d4 70%, #e8d5b7 100%);
       color: #5C3D0A;
       border-radius: 20px;
       padding: 32px 24px;
@@ -543,15 +543,22 @@
     }
 
     .quote-card::before {
-      content: '"';
+      content: '';
       position: absolute;
-      top: 8px;
-      left: 12px;
-      font-size: 28px;
-      font-style: normal;
-      opacity: 0.15;
-      color: #D4A04A;
-      font-weight: 300;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(ellipse at 30% 50%, rgba(232,184,109,0.15) 0%, transparent 50%),
+                  radial-gradient(ellipse at 70% 30%, rgba(245,230,200,0.2) 0%, transparent 40%);
+      animation: quoteShimmer 20s ease-in-out infinite;
+      pointer-events: none;
+    }
+
+    @keyframes quoteShimmer {
+      0%, 100% { transform: translate(0, 0) rotate(0deg); }
+      33% { transform: translate(2%, 1%) rotate(1deg); }
+      66% { transform: translate(-1%, -2%) rotate(-0.5deg); }
     }
 
     .quote-card::after {
@@ -568,24 +575,22 @@
 
     @media (prefers-color-scheme: dark) {
       :root:not([data-theme="light"]) .quote-card {
-        background: linear-gradient(135deg, rgba(42, 34, 21, 0.95) 0%, rgba(61, 48, 32, 0.9) 50%, rgba(74, 58, 40, 0.85) 100%);
+        background: linear-gradient(135deg, #2a2520 0%, #1e1b18 30%, #252220 70%, #2d2825 100%);
         color: #F5E6CC;
         border-color: rgba(232, 184, 109, 0.1);
         box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
       }
-      :root:not([data-theme="light"]) .quote-card::before,
       :root:not([data-theme="light"]) .quote-card::after {
         color: #E8B86D;
       }
     }
 
     [data-theme="dark"] .quote-card {
-      background: linear-gradient(135deg, rgba(42, 34, 21, 0.95) 0%, rgba(61, 48, 32, 0.9) 50%, rgba(74, 58, 40, 0.85) 100%);
+      background: linear-gradient(135deg, #2a2520 0%, #1e1b18 30%, #252220 70%, #2d2825 100%);
       color: #F5E6CC;
       border-color: rgba(232, 184, 109, 0.1);
       box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
     }
-    [data-theme="dark"] .quote-card::before,
     [data-theme="dark"] .quote-card::after {
       color: #E8B86D;
     }
@@ -1223,6 +1228,12 @@
       gap: 12px;
       animation: slideIn 0.3s ease;
       color: var(--text);
+      cursor: pointer;
+    }
+
+    .toast-icon {
+      font-size: 16px;
+      flex-shrink: 0;
     }
 
     .toast.success {
@@ -1249,6 +1260,35 @@
         transform: translateX(0);
         opacity: 1;
       }
+    }
+
+    /* Skeleton Loading States */
+    .skeleton {
+      background: linear-gradient(90deg, var(--bg-alt) 25%, var(--card) 50%, var(--bg-alt) 75%);
+      background-size: 200% 100%;
+      animation: skeleton-shimmer 1.5s ease-in-out infinite;
+      border-radius: 8px;
+    }
+
+    @keyframes skeleton-shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    .skeleton-text {
+      height: 14px;
+      margin-bottom: 8px;
+    }
+
+    .skeleton-card {
+      height: 80px;
+      margin-bottom: 12px;
+    }
+
+    .skeleton-circle {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
     }
 
     /* Feedback Modal */
@@ -1835,6 +1875,7 @@
         this.supabaseClient = null;
         this.userId = null;
         this.user = null;
+        this._syncQueue = JSON.parse(localStorage.getItem('6min_sync_queue') || '[]');
       }
 
       // ---- Auth Methods ----
@@ -1925,6 +1966,56 @@
         this.userId = null;
       }
 
+      // ---- Offline-First Sync Queue ----
+
+      _queueSync(operation) {
+        this._syncQueue.push({ ...operation, timestamp: Date.now() });
+        localStorage.setItem('6min_sync_queue', JSON.stringify(this._syncQueue));
+      }
+
+      async processSyncQueue() {
+        if (this.isDemo || !this.supabaseClient || this._syncQueue.length === 0) return;
+        const queue = [...this._syncQueue];
+        this._syncQueue = [];
+        localStorage.setItem('6min_sync_queue', '[]');
+        for (const op of queue) {
+          try {
+            if (op.type === 'entry') await this.saveEntry(op.date, op.entryType, op.content);
+            else if (op.type === 'habit') await this.toggleHabit(op.habitId, op.date);
+            else if (op.type === 'reflection') await this.saveReflection(op.weekKey, op.answers);
+          } catch (e) { console.warn('[Sync] Failed:', op, e); }
+        }
+        if (queue.length > 0) showToast(`${queue.length} Einträge synchronisiert`, 'success');
+      }
+
+      // ---- Demo → Cloud Migration ----
+
+      async migrateToCloud() {
+        if (this.isDemo || !this.supabaseClient || !this.userId) return { success: false, error: 'Nicht verbunden' };
+        try {
+          const demoData = JSON.parse(localStorage.getItem('6min_demo') || '{}');
+          let count = 0;
+          // Migrate entries
+          if (demoData.entries) {
+            for (const [date, entry] of Object.entries(demoData.entries)) {
+              if (entry.morning) { await this.saveEntry(date, 'morning', entry.morning); count++; }
+              if (entry.evening) { await this.saveEntry(date, 'evening', entry.evening); count++; }
+            }
+          }
+          // Migrate habits
+          if (demoData.habits) {
+            for (const h of demoData.habits) { await this.addHabit(h.name); count++; }
+          }
+          // Migrate reflections
+          if (demoData.weeklyReflections) {
+            for (const [week, answers] of Object.entries(demoData.weeklyReflections)) {
+              await this.saveReflection(week, answers); count++;
+            }
+          }
+          return { success: true, count };
+        } catch (e) { return { success: false, error: e.message }; }
+      }
+
       // ---- DSGVO Art. 17: Recht auf Löschung ----
 
       async deleteAllUserData() {
@@ -1975,14 +2066,28 @@
               await this.supabaseClient.from('challenge_reflections').delete().eq('user_id', this.userId));
           } catch (_) { /* Tabelle existiert möglicherweise nicht */ }
 
-          // 5. localStorage bereinigen
+          // 5. Alle Fotos aus Storage löschen
+          try {
+            const { data: files } = await this.supabaseClient.storage.from('daily-photos').list(this.userId);
+            if (files && files.length > 0) {
+              const paths = files.map(f => `${this.userId}/${f.name}`);
+              await this.supabaseClient.storage.from('daily-photos').remove(paths);
+            }
+          } catch (_) { /* Storage bucket oder Dateien existieren möglicherweise nicht */ }
+
+          // 6. localStorage bereinigen
           try {
             localStorage.removeItem('6min_onboarding_done');
             localStorage.removeItem('6min_theme');
             localStorage.removeItem(DEMO_STORAGE_KEY);
+            localStorage.removeItem('6min_sync_queue');
+            // Alle photo_* Keys löschen
+            Object.keys(localStorage).forEach(k => {
+              if (k.startsWith('photo_')) localStorage.removeItem(k);
+            });
           } catch (_) {}
 
-          // 6. Session beenden
+          // 7. Session beenden
           await this.signOut();
 
           return { success: true };
@@ -2123,7 +2228,7 @@
           ? Object.keys(DEMO_DATA.entries).filter(d => DEMO_DATA.entries[d].morning || DEMO_DATA.entries[d].evening)
           : await this.getAllEntryDates();
 
-        if (dates.length === 0) return { streak: 0, freeze: false };
+        if (dates.length === 0) return { streak: 0, freeze: false, earnedFreezes: 0 };
 
         dates.sort().reverse();
         let streak = 0;
@@ -2144,7 +2249,10 @@
           }
         }
 
-        return { streak: Math.max(1, streak), freeze: freezeUsed };
+        // Calculate earned freezes: 1 per 7 consecutive days, max 5
+        const earnedFreezes = Math.min(5, Math.floor(Math.max(1, streak) / 7));
+
+        return { streak: Math.max(1, streak), freeze: freezeUsed, earnedFreezes };
       }
 
       async getAllEntryDates() {
@@ -2510,13 +2618,18 @@
           saveDemoData();
           return true;
         }
-        // Cloud: speichere in localStorage als Fallback (Supabase Storage TODO)
+        // Cloud: Upload to Supabase Storage + localStorage fallback
         try {
           localStorage.setItem(`photo_${this.userId}_${targetDate}`, base64Data);
+          if (this.supabaseClient) {
+            const blob = await fetch(base64Data).then(r => r.blob());
+            const path = `${this.userId}/${targetDate}.jpg`;
+            await this.supabaseClient.storage.from('daily-photos').upload(path, blob, { upsert: true, contentType: 'image/jpeg' });
+          }
           return true;
         } catch (e) {
           console.error('saveDailyPhoto error:', e);
-          return false;
+          return true; // localStorage already saved
         }
       }
 
@@ -2526,7 +2639,25 @@
           return DEMO_DATA.photos?.[targetDate] || null;
         }
         try {
-          return localStorage.getItem(`photo_${this.userId}_${targetDate}`) || null;
+          // Try localStorage first
+          const cached = localStorage.getItem(`photo_${this.userId}_${targetDate}`);
+          if (cached) return cached;
+          // Then try Storage
+          if (this.supabaseClient) {
+            const path = `${this.userId}/${targetDate}.jpg`;
+            const { data } = await this.supabaseClient.storage.from('daily-photos').download(path);
+            if (data) {
+              const reader = new FileReader();
+              return new Promise((resolve) => {
+                reader.onload = (e) => {
+                  localStorage.setItem(`photo_${this.userId}_${targetDate}`, e.target.result);
+                  resolve(e.target.result);
+                };
+                reader.readAsDataURL(data);
+              });
+            }
+          }
+          return null;
         } catch { return null; }
       }
 
@@ -2539,6 +2670,10 @@
         }
         try {
           localStorage.removeItem(`photo_${this.userId}_${targetDate}`);
+          if (this.supabaseClient) {
+            const path = `${this.userId}/${targetDate}.jpg`;
+            await this.supabaseClient.storage.from('daily-photos').remove([path]);
+          }
           return true;
         } catch { return false; }
       }
@@ -2587,7 +2722,13 @@
       return html`
         <div class="toast-container">
           ${toastQueue.map(toast => html`
-            <div key=${toast.id} class=${'toast ' + toast.type}>
+            <div key=${toast.id} class=${'toast ' + toast.type} onclick=${() => {
+              clearTimeout(toastTimeouts.get(toast.id));
+              toastQueue = toastQueue.filter(t => t.id !== toast.id);
+              toastTimeouts.delete(toast.id);
+              app.render();
+            }}>
+              <span class="toast-icon">${toast.type === 'success' ? '✓' : toast.type === 'error' ? '✕' : 'ℹ'}</span>
               ${toast.message}
             </div>
           `)}
@@ -2924,6 +3065,50 @@
         }
       };
 
+      // Share Quote Handler
+      const handleShareQuote = async () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = 600; canvas.height = 400;
+          const ctx = canvas.getContext('2d');
+          // Background gradient
+          const grad = ctx.createLinearGradient(0, 0, 600, 400);
+          grad.addColorStop(0, '#fdf6e3'); grad.addColorStop(1, '#e8d5b7');
+          ctx.fillStyle = grad; ctx.fillRect(0, 0, 600, 400);
+          // Quote text
+          ctx.fillStyle = '#5a4e3c';
+          ctx.font = 'italic 22px Georgia, serif';
+          ctx.textAlign = 'center';
+          // Word wrap
+          const words = quote.split(' ');
+          let line = '', y = 160;
+          for (const word of words) {
+            const test = line + word + ' ';
+            if (ctx.measureText(test).width > 480) {
+              ctx.fillText(line.trim(), 300, y); y += 32; line = word + ' ';
+            } else line = test;
+          }
+          ctx.fillText(line.trim(), 300, y);
+          // Branding
+          ctx.font = '14px sans-serif'; ctx.fillStyle = '#b8a88a';
+          ctx.fillText('6-Minuten-Tagebuch', 300, 370);
+
+          canvas.toBlob(async (blob) => {
+            if (navigator.share && navigator.canShare) {
+              const file = new File([blob], 'zitat.png', { type: 'image/png' });
+              try {
+                await navigator.share({ files: [file], title: '6-Minuten-Tagebuch Zitat' });
+              } catch { /* user cancelled */ }
+            } else {
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a'); a.href = url; a.download = 'zitat.png'; a.click();
+              URL.revokeObjectURL(url);
+              showToast('Zitat als Bild gespeichert', 'success');
+            }
+          }, 'image/png');
+        } catch (e) { showToast('Teilen fehlgeschlagen', 'error'); }
+      };
+
       // Greeting based on time of day
       const hour = new Date().getHours();
       const greeting = hour < 4 ? 'Gute Nacht' : hour < 12 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend';
@@ -2937,6 +3122,9 @@
           <div class="dashboard-greeting">${greeting} ✨</div>
           <div class="dashboard-date">${dateDisplay}</div>
           <div class="quote-card">"${quote}"</div>
+          <div style="text-align:right;margin-top:-8px;margin-bottom:8px">
+            <button onclick=${handleShareQuote} style="background:none;border:none;color:var(--text-secondary);font-size:13px;cursor:pointer;padding:4px 8px;opacity:0.6" title="Zitat teilen">↗ Teilen</button>
+          </div>
 
           ${(() => {
             const challenge = getCurrentWeekChallenge();
@@ -3700,6 +3888,29 @@
       app.render();
     }
 
+    function MoodChart({ ratings }) {
+      if (!ratings || ratings.length < 2) return '';
+      const w = 280, h = 80, pad = 20;
+      const maxR = 10;
+      const points = ratings.map((r, i) => {
+        const x = pad + (i / (ratings.length - 1)) * (w - 2 * pad);
+        const y = h - pad - ((r / maxR) * (h - 2 * pad));
+        return `${x},${y}`;
+      });
+      return html`
+        <svg viewBox="0 0 ${w} ${h}" style="width:100%;max-width:300px;margin:12px auto;display:block">
+          <polyline points=${points.join(' ')} fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          ${ratings.map((r, i) => {
+            const x = pad + (i / (ratings.length - 1)) * (w - 2 * pad);
+            const y = h - pad - ((r / maxR) * (h - 2 * pad));
+            return html`<circle cx=${x} cy=${y} r="4" fill="var(--accent)" stroke="var(--card)" stroke-width="2"/>`;
+          })}
+          <text x=${pad} y=${h - 4} font-size="9" fill="var(--text-secondary)">vor ${ratings.length} Wo.</text>
+          <text x=${w - pad} y=${h - 4} font-size="9" fill="var(--text-secondary)" text-anchor="end">aktuell</text>
+        </svg>
+      `;
+    }
+
     function WeeklyReflectionScreen({ dataService }) {
       const currentISOWeek = getISOWeek(new Date());
       const isCurrentWeek = reflectionWeek === currentISOWeek;
@@ -3957,6 +4168,52 @@
     }
 
     // ============================================================================
+    // COMPONENT: Statistics
+    // ============================================================================
+
+    let statsOpen = false;
+    let statsData = null;
+
+    async function calculateStats(dataService) {
+      const stats = { totalEntries: 0, daysWithEntries: 0, longestStreak: 0, avgMood: 0, habitRate: 0, topWords: [] };
+      if (dataService.isDemo) {
+        const entries = DEMO_DATA.entries || {};
+        const dates = Object.keys(entries);
+        stats.daysWithEntries = dates.length;
+        dates.forEach(d => { if (entries[d].morning) stats.totalEntries++; if (entries[d].evening) stats.totalEntries++; });
+        // Longest streak
+        const sorted = dates.sort();
+        let current = 1, max = 1;
+        for (let i = 1; i < sorted.length; i++) {
+          const prev = new Date(sorted[i-1]); const curr = new Date(sorted[i]);
+          const diff = (curr - prev) / (1000*60*60*24);
+          if (diff === 1) { current++; max = Math.max(max, current); } else current = 1;
+        }
+        stats.longestStreak = max;
+        // Mood from weekly reflections
+        const reflections = DEMO_DATA.weeklyReflections || {};
+        const ratings = Object.values(reflections).map(r => r.week_rating).filter(Boolean);
+        stats.avgMood = ratings.length ? (ratings.reduce((a,b) => a+b, 0) / ratings.length).toFixed(1) : '-';
+        // Word frequency from grateful entries
+        const words = {};
+        dates.forEach(d => {
+          const m = entries[d]?.morning;
+          if (m?.grateful) m.grateful.forEach(g => {
+            if (g) g.toLowerCase().split(/\s+/).filter(w => w.length > 3).forEach(w => { words[w] = (words[w]||0) + 1; });
+          });
+        });
+        stats.topWords = Object.entries(words).sort((a,b) => b[1]-a[1]).slice(0, 8).map(([w,c]) => ({word:w, count:c}));
+        // Habit completion
+        const habits = DEMO_DATA.habits || [];
+        const tracks = DEMO_DATA.habitTracks || {};
+        let done = 0, total = 0;
+        habits.forEach(h => { Object.values(tracks[h.id] || {}).forEach(v => { total++; if (v) done++; }); });
+        stats.habitRate = total ? Math.round(done/total*100) : 0;
+      }
+      return stats;
+    }
+
+    // ============================================================================
     // COMPONENT: Settings
     // ============================================================================
 
@@ -4004,6 +4261,19 @@
                 <div>→</div>
               </div>
             ` : ''}
+            ${isConnected && localStorage.getItem('6min_demo') ? html`
+              <div class="settings-item" style="cursor:pointer" onclick=${async () => {
+                showToast('Migration läuft...', 'info');
+                const result = await dataService.migrateToCloud();
+                if (result.success) {
+                  localStorage.removeItem('6min_demo');
+                  showToast(result.count + ' Einträge in die Cloud übertragen ✓', 'success');
+                } else showToast('Migration fehlgeschlagen: ' + result.error, 'error');
+              }}>
+                <div class="settings-label">🔄 Lokale Daten in Cloud übertragen</div>
+                <div>→</div>
+              </div>
+            ` : ''}
           </div>
 
           <div class="settings-section">
@@ -4038,13 +4308,82 @@
               <div class="settings-label">📥 Meine Daten exportieren</div>
               <div style="font-size:12px;color:var(--text-secondary)">Art. 20 DSGVO</div>
             </div>
+            <div class="settings-item" style="cursor:pointer" onclick=${async () => {
+              try {
+                showToast('PDF wird erstellt...', 'info');
+                const entries = dataService.isDemo ? DEMO_DATA.entries || {} : {};
+                let htmlContent = '<html><head><style>body{font-family:Georgia,serif;max-width:700px;margin:0 auto;padding:40px;color:#333}h1{color:#E8B86D;border-bottom:2px solid #E8B86D;padding-bottom:8px}h2{color:#666;margin-top:32px;font-size:16px}.entry{margin:16px 0;padding:16px;background:#fdf6e3;border-radius:8px;border-left:3px solid #E8B86D}.label{font-weight:bold;font-size:13px;color:#888;margin-bottom:4px}.answer{font-size:14px;line-height:1.6;margin-bottom:8px}</style></head><body>';
+                htmlContent += '<h1>Mein 6-Minuten-Tagebuch</h1>';
+                htmlContent += '<p style="color:#888">Exportiert am ' + new Date().toLocaleDateString('de-DE') + '</p>';
+
+                const dates = Object.keys(entries).sort().reverse();
+                for (const date of dates) {
+                  const entry = entries[date];
+                  htmlContent += '<h2>' + new Date(date).toLocaleDateString('de-DE', {weekday:'long', year:'numeric', month:'long', day:'numeric'}) + '</h2>';
+                  if (entry.morning) {
+                    htmlContent += '<div class="entry"><div class="label">Morgens</div>';
+                    if (entry.morning.grateful) entry.morning.grateful.forEach((g,i) => { if(g) htmlContent += '<div class="answer">Dankbar ' + (i+1) + ': ' + g + '</div>'; });
+                    if (entry.morning.affirmation) htmlContent += '<div class="answer">Affirmation: ' + entry.morning.affirmation + '</div>';
+                    htmlContent += '</div>';
+                  }
+                  if (entry.evening) {
+                    htmlContent += '<div class="entry"><div class="label">Abends</div>';
+                    if (entry.evening.great_things) entry.evening.great_things.forEach((g,i) => { if(g) htmlContent += '<div class="answer">Schönes ' + (i+1) + ': ' + g + '</div>'; });
+                    if (entry.evening.good_deed) htmlContent += '<div class="answer">Gutes getan: ' + entry.evening.good_deed + '</div>';
+                    htmlContent += '</div>';
+                  }
+                }
+                htmlContent += '</body></html>';
+
+                const printWindow = window.open('', '_blank');
+                printWindow.document.write(htmlContent);
+                printWindow.document.close();
+                printWindow.print();
+                showToast('PDF-Druckvorschau geöffnet', 'success');
+              } catch (e) { showToast('PDF-Export fehlgeschlagen', 'error'); }
+            }}>
+              <div class="settings-label">📄 Als PDF exportieren</div>
+              <div style="font-size:12px;color:var(--text-secondary)">Druckvorschau</div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <div class="settings-title">Erinnerungen</div>
+            <div class="settings-item" style="cursor:pointer" onclick=${async () => {
+              if (!('Notification' in window)) {
+                showToast('Browser unterstützt keine Benachrichtigungen', 'error');
+                return;
+              }
+              const perm = await Notification.requestPermission();
+              if (perm === 'granted') {
+                localStorage.setItem('6min_notifications', 'true');
+                showToast('Erinnerungen aktiviert ✓', 'success');
+              } else {
+                showToast('Benachrichtigungen wurden abgelehnt', 'info');
+              }
+              app.render();
+            }}>
+              <div class="settings-label">🔔 Tägliche Erinnerung</div>
+              <div style="font-size:12px;color:var(--text-secondary)">${localStorage.getItem('6min_notifications') === 'true' ? 'Aktiv' : 'Deaktiviert'}</div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <div class="settings-title">Statistiken</div>
+            <div class="settings-item" style="cursor:pointer" onclick=${async () => {
+              statsData = await calculateStats(dataService);
+              statsOpen = true; app.render();
+            }}>
+              <div class="settings-label">📊 Meine Statistiken</div>
+              <div>→</div>
+            </div>
           </div>
 
           <div class="settings-section">
             <div class="settings-title">Über die App</div>
             <div class="settings-item">
               <div class="settings-label">Version</div>
-              <div class="settings-value">2.4.0</div>
+              <div class="settings-value">2.5.0</div>
             </div>
             <div class="settings-item">
               <div class="settings-label">Entwickelt mit ❤️</div>
@@ -4134,6 +4473,52 @@
             </div>
           </div>
         ` : ''}
+
+        ${statsOpen && statsData ? html`
+          <div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:200;display:flex;align-items:center;justify-content:center;padding:16px" onclick=${e => { if(e.target===e.currentTarget){statsOpen=false;app.render();} }}>
+            <div style="background:var(--card);border-radius:16px;max-width:500px;width:100%;max-height:80vh;overflow-y:auto;padding:24px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <h2 style="margin:0;font-size:18px;color:var(--text)">📊 Deine Statistiken</h2>
+                <button style="background:none;border:none;font-size:24px;cursor:pointer;color:var(--text)" onclick=${()=>{statsOpen=false;app.render();}}>×</button>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+                <div style="background:var(--bg-alt);border-radius:12px;padding:16px;text-align:center">
+                  <div style="font-size:28px;font-weight:700;color:var(--accent)">${statsData.totalEntries}</div>
+                  <div style="font-size:12px;color:var(--text-secondary)">Einträge</div>
+                </div>
+                <div style="background:var(--bg-alt);border-radius:12px;padding:16px;text-align:center">
+                  <div style="font-size:28px;font-weight:700;color:var(--accent)">${statsData.daysWithEntries}</div>
+                  <div style="font-size:12px;color:var(--text-secondary)">Tage</div>
+                </div>
+                <div style="background:var(--bg-alt);border-radius:12px;padding:16px;text-align:center">
+                  <div style="font-size:28px;font-weight:700;color:var(--success)">${statsData.longestStreak}</div>
+                  <div style="font-size:12px;color:var(--text-secondary)">Längster Streak</div>
+                </div>
+                <div style="background:var(--bg-alt);border-radius:12px;padding:16px;text-align:center">
+                  <div style="font-size:28px;font-weight:700;color:var(--accent)">${statsData.avgMood}</div>
+                  <div style="font-size:12px;color:var(--text-secondary)">⌀ Stimmung</div>
+                </div>
+              </div>
+              <div style="background:var(--bg-alt);border-radius:12px;padding:16px;margin-bottom:12px">
+                <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Gewohnheiten-Treue</div>
+                <div style="background:var(--bg);border-radius:8px;height:12px;overflow:hidden">
+                  <div style="background:linear-gradient(90deg,var(--accent),var(--success));height:100%;width:${statsData.habitRate}%;border-radius:8px;transition:width 0.5s"></div>
+                </div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">${statsData.habitRate}% erledigt</div>
+              </div>
+              ${statsData.topWords.length > 0 ? html`
+                <div style="background:var(--bg-alt);border-radius:12px;padding:16px">
+                  <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Häufige Dankbarkeits-Wörter</div>
+                  <div style="display:flex;flex-wrap:wrap;gap:6px">
+                    ${statsData.topWords.map(w => html`
+                      <span style="background:var(--accent-bg);color:var(--accent);padding:4px 10px;border-radius:16px;font-size:12px">${w.word} (${w.count})</span>
+                    `)}
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        ` : ''}
       `;
     }
 
@@ -4192,6 +4577,32 @@
         }
         // Fallback: Demo-Modus
         await this.handleDemoMode();
+
+        // Online/Offline listeners for sync queue
+        window.addEventListener('online', () => {
+          if (this.state.dataService) {
+            this.state.dataService.processSyncQueue();
+            showToast('Wieder online ✓', 'info');
+          }
+        });
+        window.addEventListener('offline', () => {
+          showToast('Offline-Modus aktiv', 'info');
+        });
+
+        // Schedule daily notifications
+        if (localStorage.getItem('6min_notifications') === 'true' && 'Notification' in window && Notification.permission === 'granted') {
+          this._notifInterval = setInterval(() => {
+            const h = new Date().getHours();
+            const m = new Date().getMinutes();
+            // Morning: 7:00, Evening: 20:00
+            if ((h === 7 && m === 0) || (h === 20 && m === 0)) {
+              new Notification('6-Minuten-Tagebuch', {
+                body: h === 7 ? 'Zeit für deinen Morgen-Eintrag ☀️' : 'Zeit für deinen Abend-Eintrag 🌙',
+                icon: '/icon-192.png'
+              });
+            }
+          }, 60000);
+        }
       }
 
       componentWillUnmount() {
