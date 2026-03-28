@@ -522,7 +522,8 @@
     }
 
     .quote-card {
-      background: linear-gradient(135deg, #fdf6e3 0%, #f5e6c8 30%, #ede0d4 70%, #e8d5b7 100%);
+      background: linear-gradient(135deg, rgba(253,246,227,0.92) 0%, rgba(245,230,200,0.92) 30%, rgba(237,224,212,0.92) 70%, rgba(232,213,183,0.92) 100%),
+                  url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Ccircle cx='40' cy='40' r='20' fill='none' stroke='%23D4A04A' stroke-width='0.5' opacity='0.12'/%3E%3Ccircle cx='0' cy='0' r='15' fill='none' stroke='%23D4A04A' stroke-width='0.3' opacity='0.08'/%3E%3Ccircle cx='80' cy='80' r='15' fill='none' stroke='%23D4A04A' stroke-width='0.3' opacity='0.08'/%3E%3C/svg%3E");
       color: #5C3D0A;
       border-radius: 20px;
       padding: 32px 24px;
@@ -535,8 +536,8 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 2px 12px rgba(232, 184, 109, 0.1);
-      border: 1px solid rgba(232, 184, 109, 0.15);
+      box-shadow: 0 4px 20px rgba(232, 184, 109, 0.15), 0 1px 4px rgba(0,0,0,0.04);
+      border: 1px solid rgba(232, 184, 109, 0.2);
       position: relative;
       overflow: hidden;
       letter-spacing: 0.3px;
@@ -2508,7 +2509,21 @@
 
       async getHabits() {
         if (this.isDemo) {
-          return this._applyHabitOrder(DEMO_DATA.habits || []);
+          const habits = (DEMO_DATA.habits || []).map(h => ({ ...h }));
+          // _trackCache aus DEMO_DATA.habitTracks befüllen
+          const tracks = DEMO_DATA.habitTracks || {};
+          habits.forEach(h => {
+            h._trackCache = {};
+            Object.keys(tracks).forEach(key => {
+              // key-Format: "YYYY-MM-DD_habitId"
+              const parts = key.split('_');
+              const hId = parts.slice(1).join('_');
+              if (hId == h.id && tracks[key]) {
+                h._trackCache[parts[0]] = true;
+              }
+            });
+          });
+          return this._applyHabitOrder(habits);
         }
         if (!this.supabaseClient || !this.userId) return [];
         try {
@@ -3203,6 +3218,7 @@
 
           <div class="daily-photo-container">
             <input id="photo-input" class="daily-photo-input" type="file" accept="image/*" onchange=${handlePhotoUpload} />
+            <input id="photo-input-camera" class="daily-photo-input" type="file" accept="image/*" capture="environment" onchange=${handlePhotoUpload} />
             ${todayPhoto ? html`
               <img src=${todayPhoto} class="daily-photo-thumbnail" onclick=${() => {
                 archiveSelectedPhoto = todayPhoto;
@@ -3215,9 +3231,14 @@
               <div class="daily-photo-label">Bild des Tages</div>
               <div class="daily-photo-date">${todayDate}</div>
             </div>
-            <button class="daily-photo-button" onclick=${() => document.getElementById('photo-input').click()}>
-              📸 Hochladen
-            </button>
+            <div style="display:flex;gap:6px">
+              <button class="daily-photo-button" style="flex:1" onclick=${() => document.getElementById('photo-input').click()}>
+                🖼️ Galerie
+              </button>
+              <button class="daily-photo-button" style="flex:1" onclick=${() => document.getElementById('photo-input-camera').click()}>
+                📸 Kamera
+              </button>
+            </div>
           </div>
 
           <div class="streak-container">
@@ -3644,6 +3665,7 @@
     let archiveSelectedDate = null;
     let archiveSelectedEntry = null;
     let archiveSelectedPhoto = null; // Foto für Lightbox-Overlay
+    let archiveLightboxPhoto = null; // Separater State für Fullscreen-Lightbox im Archiv
     let archiveMonthEntryDates = []; // Dates mit Einträgen im aktuellen Monat
     let archiveMonthLoaded = ''; // "YYYY-MM" des geladenen Monats
 
@@ -3785,20 +3807,12 @@
                 <div style="font-size:13px;font-weight:600;color:var(--text)">${archiveSelectedDate}</div>
               </div>
               ${archiveSelectedPhoto ? html`
-                <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:16px;padding:12px;background:var(--bg-alt);border-radius:12px">
-                  <img src=${archiveSelectedPhoto} style="width:80px;height:80px;object-fit:cover;border-radius:10px;cursor:pointer;flex-shrink:0" onclick=${() => {
+                <div style="margin-bottom:16px;padding:12px;background:var(--bg-alt);border-radius:12px">
+                  <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">📸 Bild des Tages</div>
+                  <img src=${archiveSelectedPhoto} style="width:100%;max-height:300px;object-fit:cover;border-radius:10px;cursor:pointer;display:block" onclick=${() => {
+                    archiveLightboxPhoto = archiveSelectedPhoto;
                     app.render();
                   }} alt="Photo from ${archiveSelectedDate}" />
-                  <div style="flex:1;min-width:0">
-                    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">📸 Bild des Tages</div>
-                    <div style="font-size:13px;color:var(--text);line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical">${
-                      archiveSelectedEntry.morning?.grateful?.[0]
-                        ? 'Dankbar für: ' + archiveSelectedEntry.morning.grateful[0]
-                        : archiveSelectedEntry.evening?.great_things?.[0]
-                          ? archiveSelectedEntry.evening.great_things[0]
-                          : 'Tippe für Vollbild'
-                    }</div>
-                  </div>
                 </div>
               ` : ''}
               ${archiveSelectedEntry.morning ? html`
@@ -3849,10 +3863,10 @@
             </div>
           ` : ''}
 
-          ${archiveSelectedPhoto ? html`
-            <div class="photo-lightbox" onclick=${e => { if (e.target === e.currentTarget) { archiveSelectedPhoto = null; app.render(); } }}>
-              <button class="photo-lightbox-close" onclick=${() => { archiveSelectedPhoto = null; app.render(); }}>×</button>
-              <img src=${archiveSelectedPhoto} class="photo-lightbox-image" alt="Photo fullscreen" />
+          ${archiveLightboxPhoto ? html`
+            <div class="photo-lightbox" onclick=${e => { if (e.target === e.currentTarget) { archiveLightboxPhoto = null; app.render(); } }}>
+              <button class="photo-lightbox-close" onclick=${() => { archiveLightboxPhoto = null; app.render(); }}>×</button>
+              <img src=${archiveLightboxPhoto} class="photo-lightbox-image" alt="Photo fullscreen" />
             </div>
           ` : ''}
         </div>
@@ -4203,12 +4217,71 @@
           });
         });
         stats.topWords = Object.entries(words).sort((a,b) => b[1]-a[1]).slice(0, 8).map(([w,c]) => ({word:w, count:c}));
-        // Habit completion
+        // Habit completion (Demo: habitTracks ist flat { "YYYY-MM-DD_habitId": true })
         const habits = DEMO_DATA.habits || [];
         const tracks = DEMO_DATA.habitTracks || {};
         let done = 0, total = 0;
-        habits.forEach(h => { Object.values(tracks[h.id] || {}).forEach(v => { total++; if (v) done++; }); });
+        habits.forEach(h => {
+          Object.keys(tracks).forEach(key => {
+            if (key.endsWith('_' + h.id)) { total++; if (tracks[key]) done++; }
+          });
+        });
         stats.habitRate = total ? Math.round(done/total*100) : 0;
+      } else {
+        // Cloud-Modus: Daten aus Supabase laden
+        try {
+          if (dataService.supabaseClient && dataService.userId) {
+            const uid = dataService.userId;
+            // Einträge zählen
+            const entriesResult = await dataService.supabaseClient
+              .from('entries').select('date, entry_type').eq('user_id', uid);
+            const entries = entriesResult.data || [];
+            stats.totalEntries = entries.length;
+            const uniqueDates = new Set(entries.map(e => e.date));
+            stats.daysWithEntries = uniqueDates.size;
+            // Longest streak
+            const sorted = [...uniqueDates].sort();
+            let current = 1, max = sorted.length > 0 ? 1 : 0;
+            for (let i = 1; i < sorted.length; i++) {
+              const prev = new Date(sorted[i-1]); const curr = new Date(sorted[i]);
+              const diff = (curr - prev) / (1000*60*60*24);
+              if (diff === 1) { current++; max = Math.max(max, current); } else current = 1;
+            }
+            stats.longestStreak = max;
+            // Mood aus weekly reflections
+            const reflResult = await dataService.supabaseClient
+              .from('weekly_reflections').select('week_rating').eq('user_id', uid);
+            const ratings = (reflResult.data || []).map(r => r.week_rating).filter(Boolean);
+            stats.avgMood = ratings.length ? (ratings.reduce((a,b) => a+b, 0) / ratings.length).toFixed(1) : '-';
+            // Habit completion
+            const habitsResult = await dataService.supabaseClient
+              .from('habits').select('id').eq('user_id', uid);
+            const habitIds = (habitsResult.data || []).map(h => h.id);
+            if (habitIds.length > 0) {
+              const logsResult = await dataService.supabaseClient
+                .from('habit_logs').select('habit_id, completed').eq('user_id', uid);
+              const logs = logsResult.data || [];
+              let hDone = 0, hTotal = logs.length;
+              logs.forEach(l => { if (l.completed) hDone++; });
+              stats.habitRate = hTotal ? Math.round(hDone/hTotal*100) : 0;
+            }
+            // Top words aus grateful Einträgen
+            const gratefulResult = await dataService.supabaseClient
+              .from('entries').select('content').eq('user_id', uid).eq('entry_type', 'morning');
+            const words = {};
+            (gratefulResult.data || []).forEach(e => {
+              try {
+                const c = typeof e.content === 'string' ? JSON.parse(e.content) : e.content;
+                if (c?.grateful) c.grateful.forEach(g => {
+                  if (g) g.toLowerCase().split(/\s+/).filter(w => w.length > 3).forEach(w => { words[w] = (words[w]||0) + 1; });
+                });
+              } catch(_) {}
+            });
+            stats.topWords = Object.entries(words).sort((a,b) => b[1]-a[1]).slice(0, 8).map(([w,c]) => ({word:w, count:c}));
+          }
+        } catch (e) {
+          console.error('calculateStats cloud error:', e);
+        }
       }
       return stats;
     }
@@ -4383,7 +4456,7 @@
             <div class="settings-title">Über die App</div>
             <div class="settings-item">
               <div class="settings-label">Version</div>
-              <div class="settings-value">2.5.0</div>
+              <div class="settings-value">2.6.0</div>
             </div>
             <div class="settings-item">
               <div class="settings-label">Entwickelt mit ❤️</div>

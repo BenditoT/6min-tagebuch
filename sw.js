@@ -1,7 +1,7 @@
 // sw.js — Service Worker für 6-Minuten-Tagebuch PWA
-// v2.5.0: 12 neue Features — Foto-Sync, Offline-First, Streak-Freeze, Mood-Chart, PDF-Export, Share-Quote, Stats-Dashboard, Push-Notifications, Skeleton-Loading, Toast-Upgrade, Demo→Cloud Migration, Design-Polish
+// v2.6.0: Feedback-Runde — Habit-Checkbox Fix (Demo _trackCache), iOS Galerie+Kamera Buttons, Stats Cloud-Modus, Archiv-Foto Lightbox, Zitat-Design aufgehübscht
 
-const CACHE_VERSION = 'v2.5.0';
+const CACHE_VERSION = 'v2.6.0';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `runtime-${CACHE_VERSION}`;
 
