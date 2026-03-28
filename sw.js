@@ -1,7 +1,7 @@
 // sw.js — Service Worker für 6-Minuten-Tagebuch PWA
-// v2.3.0: Wochenchallenges (52 Wochen), iOS Gallery-Fix
+// v2.4.0: Supabase RLS komplett, Design-Feintuning, DSGVO challenge_reflections
 
-const CACHE_VERSION = 'v2.3.0';
+const CACHE_VERSION = 'v2.4.0';
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `runtime-${CACHE_VERSION}`;
 

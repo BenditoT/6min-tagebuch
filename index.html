@@ -130,10 +130,23 @@
       font-size: 20px;
       color: var(--text-secondary);
       text-decoration: none;
+      position: relative;
     }
 
     .tab.active {
       color: var(--accent);
+    }
+
+    .tab.active::after {
+      content: '';
+      position: absolute;
+      bottom: -8px;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--accent);
+      border-radius: 2px 2px 0 0;
+      transition: all 0.2s ease;
     }
 
     .tab-label {
@@ -145,11 +158,31 @@
     /* Screens */
     .screen {
       display: none;
+      animation: fadeOut 0.2s ease;
     }
 
     .screen.active {
       display: flex;
       flex-direction: column;
+      animation: fadeIn 0.2s ease;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
+    }
+
+    @keyframes fadeOut {
+      from {
+        opacity: 1;
+      }
+      to {
+        opacity: 0;
+      }
     }
 
     /* Auth / Login Screen */
@@ -264,6 +297,28 @@
       min-height: 100vh;
       font-size: 18px;
       color: var(--text-secondary);
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .auth-loading::before {
+      content: '';
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%);
+      animation: loadingPulse 2s ease-in-out infinite;
+    }
+
+    @keyframes loadingPulse {
+      0%, 100% {
+        opacity: 0.6;
+        transform: scale(1);
+      }
+      50% {
+        opacity: 1;
+        transform: scale(1.1);
+      }
     }
 
     /* Legacy Setup Screen (kept for Supabase config) */
@@ -324,6 +379,11 @@
       color: #FFFFFF;
     }
 
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(26, 26, 46, 0.2);
+    }
+
     .btn-primary:active {
       background: #0D0D15;
       transform: scale(0.98);
@@ -333,6 +393,11 @@
       background: var(--card);
       color: var(--text);
       border: 2px solid #1A1A2E;
+    }
+
+    .btn-secondary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
     }
 
     .btn-secondary:active {
@@ -374,7 +439,7 @@
     .input-field:focus {
       outline: none;
       border-color: #E8B86D;
-      box-shadow: 0 0 0 3px rgba(232, 184, 109, 0.1);
+      box-shadow: 0 0 0 3px rgba(232, 184, 109, 0.08);
     }
 
     textarea.input-field {
@@ -457,53 +522,56 @@
     }
 
     .quote-card {
-      background: linear-gradient(135deg, #FFF8EE 0%, #FFECD2 50%, #FCE4C3 100%);
+      background: linear-gradient(135deg, rgba(255, 248, 238, 0.9) 0%, rgba(255, 236, 210, 0.85) 50%, rgba(252, 228, 195, 0.8) 100%);
       color: #5C3D0A;
       border-radius: 20px;
-      padding: 28px 24px;
+      padding: 32px 24px;
       text-align: center;
-      font-size: 17px;
-      font-weight: 500;
+      font-size: 18px;
+      font-weight: 400;
       font-style: italic;
-      line-height: 1.7;
-      min-height: 120px;
+      line-height: 1.9;
+      min-height: 130px;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 20px rgba(232, 184, 109, 0.15);
-      border: 1px solid rgba(232, 184, 109, 0.2);
+      box-shadow: 0 2px 12px rgba(232, 184, 109, 0.1);
+      border: 1px solid rgba(232, 184, 109, 0.15);
       position: relative;
       overflow: hidden;
+      letter-spacing: 0.3px;
     }
 
     .quote-card::before {
-      content: '✦';
+      content: '"';
       position: absolute;
-      top: 12px;
-      left: 16px;
-      font-size: 14px;
+      top: 8px;
+      left: 12px;
+      font-size: 28px;
       font-style: normal;
-      opacity: 0.3;
+      opacity: 0.15;
       color: #D4A04A;
+      font-weight: 300;
     }
 
     .quote-card::after {
-      content: '✦';
+      content: '"';
       position: absolute;
-      bottom: 12px;
-      right: 16px;
-      font-size: 14px;
+      bottom: 8px;
+      right: 12px;
+      font-size: 28px;
       font-style: normal;
-      opacity: 0.3;
+      opacity: 0.15;
       color: #D4A04A;
+      font-weight: 300;
     }
 
     @media (prefers-color-scheme: dark) {
       :root:not([data-theme="light"]) .quote-card {
-        background: linear-gradient(135deg, #2A2215 0%, #3D3020 50%, #4A3A28 100%);
+        background: linear-gradient(135deg, rgba(42, 34, 21, 0.95) 0%, rgba(61, 48, 32, 0.9) 50%, rgba(74, 58, 40, 0.85) 100%);
         color: #F5E6CC;
-        border-color: rgba(232, 184, 109, 0.15);
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        border-color: rgba(232, 184, 109, 0.1);
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
       }
       :root:not([data-theme="light"]) .quote-card::before,
       :root:not([data-theme="light"]) .quote-card::after {
@@ -512,10 +580,10 @@
     }
 
     [data-theme="dark"] .quote-card {
-      background: linear-gradient(135deg, #2A2215 0%, #3D3020 50%, #4A3A28 100%);
+      background: linear-gradient(135deg, rgba(42, 34, 21, 0.95) 0%, rgba(61, 48, 32, 0.9) 50%, rgba(74, 58, 40, 0.85) 100%);
       color: #F5E6CC;
-      border-color: rgba(232, 184, 109, 0.15);
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      border-color: rgba(232, 184, 109, 0.1);
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
     }
     [data-theme="dark"] .quote-card::before,
     [data-theme="dark"] .quote-card::after {
@@ -1899,6 +1967,12 @@
           try {
             await this._withRetry(async () =>
               await this.supabaseClient.from('weekly_reflections').delete().eq('user_id', this.userId));
+          } catch (_) { /* Tabelle existiert möglicherweise nicht */ }
+
+          // 4b. Alle Challenge-Reflexionen löschen (falls Tabelle existiert)
+          try {
+            await this._withRetry(async () =>
+              await this.supabaseClient.from('challenge_reflections').delete().eq('user_id', this.userId));
           } catch (_) { /* Tabelle existiert möglicherweise nicht */ }
 
           // 5. localStorage bereinigen
@@ -3970,7 +4044,7 @@
             <div class="settings-title">Über die App</div>
             <div class="settings-item">
               <div class="settings-label">Version</div>
-              <div class="settings-value">2.3.0</div>
+              <div class="settings-value">2.4.0</div>
             </div>
             <div class="settings-item">
               <div class="settings-label">Entwickelt mit ❤️</div>
