@@ -1,18 +1,27 @@
 // sw.js — Service Worker für 6-Minuten-Tagebuch PWA
-// v2.6.0: Feedback-Runde — Habit-Checkbox Fix (Demo _trackCache), iOS Galerie+Kamera Buttons, Stats Cloud-Modus, Archiv-Foto Lightbox, Zitat-Design aufgehübscht
+// v2.6.1: Export repariert (Cloud+Demo), Cloud-Stats auf daily_entries, PWA-Pfade relativ zum GitHub-Pages-Subpath
 
-const CACHE_VERSION = 'v2.6.0';
-const STATIC_CACHE = `static-${CACHE_VERSION}`;
-const RUNTIME_CACHE = `runtime-${CACHE_VERSION}`;
+const CACHE_VERSION = 'v2.6.1';
+// App-eigener Präfix: auf benditot.github.io teilen sich mehrere Apps dieselbe Origin (= denselben Cache-Speicher)
+const CACHE_PREFIX = '6min-';
+const STATIC_CACHE = `${CACHE_PREFIX}static-${CACHE_VERSION}`;
+const RUNTIME_CACHE = `${CACHE_PREFIX}runtime-${CACHE_VERSION}`;
 
+// Relativ zum SW-Scope (/6min-tagebuch/), NICHT zur Domain-Root
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/icon-180.png',
-  '/icon-192.png',
-  '/icon-512.png'
+  './',
+  './index.html',
+  './manifest.json',
+  './icon-180.png',
+  './icon-192.png',
+  './icon-512.png'
 ];
+
+// Nur eigene Caches aufräumen: neue Präfix-Caches + Alt-Namen dieser App bis v2.6.0
+function isOwnOldCache(name) {
+  if (name.startsWith(CACHE_PREFIX)) return !name.endsWith(CACHE_VERSION);
+  return /^(static|runtime)-v2\.[0-6]\.\d+$/.test(name);
+}
 
 // CDN-URLs die beim Install vorgeladen werden
 const CDN_ASSETS = [
@@ -62,7 +71,7 @@ self.addEventListener('activate', (event) => {
     caches.keys()
       .then(cacheNames => Promise.all(
         cacheNames
-          .filter(name => !name.includes(CACHE_VERSION))
+          .filter(isOwnOldCache)
           .map(name => {
             console.log('[SW] Deleting old cache:', name);
             return caches.delete(name);

@@ -1747,6 +1747,7 @@
     }
 
     // Demo-Daten: Lade aus localStorage oder verwende Defaults
+    const APP_VERSION = '2.6.1';
     const DEMO_STORAGE_KEY = '6min_demo_data';
     const DEMO_DEFAULTS = {
       entries: {},
@@ -2274,6 +2275,86 @@
           console.error('getAllEntryDates error:', e);
           return [];
         }
+      }
+
+      // ---- Vollständiger Datenexport (Art. 20 DSGVO) — eine Quelle für JSON + Druck ----
+      // Wirft bei Fehlern der Kerntabellen (kein Teil-Export mit Erfolgsmeldung).
+      async exportAllData() {
+        const envelope = {
+          schemaVersion: 1,
+          exportedAt: new Date().toISOString(),
+          mode: this.isDemo ? 'demo' : 'cloud',
+          appVersion: APP_VERSION,
+          entries: [],          // [{ date, morning, evening }]
+          habits: [],           // [{ id, name, ... }]
+          habitLogs: [],        // [{ habit_id, date, completed }]
+          reflections: { weekly: [], challenge: [] },
+          photosMeta: [],       // [{ date, path? }] — Bilddaten selbst sind nicht enthalten
+          warnings: []
+        };
+
+        if (this.isDemo) {
+          const entries = DEMO_DATA.entries || {};
+          envelope.entries = Object.keys(entries).sort()
+            .filter(d => entries[d] && (entries[d].morning || entries[d].evening))
+            .map(d => ({ date: d, morning: entries[d].morning || null, evening: entries[d].evening || null }));
+          envelope.habits = (DEMO_DATA.habits || []).map(h => ({ ...h }));
+          const tracks = DEMO_DATA.habitTracks || {};
+          envelope.habitLogs = Object.keys(tracks).filter(k => tracks[k]).sort().map(k => {
+            // Key-Format "YYYY-MM-DD_habitId" — Datum ist immer 10 Zeichen
+            return { habit_id: k.slice(11), date: k.slice(0, 10), completed: true };
+          });
+          const weekly = DEMO_DATA.weeklyReflections || {};
+          envelope.reflections.weekly = Object.keys(weekly).sort().map(k => ({ week: k, answers: { ...weekly[k] } }));
+          const chall = DEMO_DATA.challengeReflections || {};
+          envelope.reflections.challenge = Object.keys(chall).sort().map(k => {
+            const m = /^(\d{4})_W(\d+)$/.exec(k);
+            return { year: m ? +m[1] : null, week: m ? +m[2] : null, rating: chall[k].rating ?? null, note: chall[k].note || '' };
+          });
+          envelope.photosMeta = Object.keys(DEMO_DATA.photos || {}).filter(d => DEMO_DATA.photos[d]).sort().map(d => ({ date: d }));
+          return envelope;
+        }
+
+        if (!this.supabaseClient || !this.userId) throw new Error('Nicht angemeldet');
+        const uid = this.userId;
+        const q = async (label, build) => {
+          const res = await this._withRetry(async () => await build());
+          if (res.error) throw new Error(label + ': ' + (res.error.message || 'Fehler'));
+          return res.data || [];
+        };
+
+        const [entries, habits, logs, weekly, challenge] = await Promise.all([
+          q('Einträge', () => this.supabaseClient.from('daily_entries').select('entry_date, morning, evening').eq('user_id', uid).order('entry_date', { ascending: true })),
+          q('Habits', () => this.supabaseClient.from('habits').select('*').eq('user_id', uid).order('created_at', { ascending: true })),
+          q('Habit-Logs', () => this.supabaseClient.from('habit_logs').select('habit_id, log_date, completed').eq('user_id', uid).order('log_date', { ascending: true })),
+          q('Wochenreflexionen', () => this.supabaseClient.from('weekly_reflections').select('*').eq('user_id', uid)),
+          q('Challenge-Reflexionen', () => this.supabaseClient.from('challenge_reflections').select('*').eq('user_id', uid))
+        ]);
+
+        const stripUser = (row) => { const { user_id, ...rest } = row; return rest; };
+        envelope.entries = entries
+          .filter(e => e.morning || e.evening)
+          .map(e => ({ date: e.entry_date, morning: e.morning || null, evening: e.evening || null }));
+        envelope.habits = habits.map(stripUser);
+        envelope.habitLogs = logs.map(l => ({ habit_id: l.habit_id, date: l.log_date, completed: l.completed }));
+        envelope.reflections.weekly = weekly
+          .map(r => ({ week: r.week_key, answers: r.answers || {} }))
+          .sort((a, b) => String(a.week).localeCompare(String(b.week)));
+        envelope.reflections.challenge = challenge
+          .map(r => ({ year: r.year, week: r.week_number, rating: r.rating ?? null, note: r.note || '' }))
+          .sort((a, b) => (a.year - b.year) || (a.week - b.week));
+
+        // Foto-Metadaten (nicht kritisch — Fehler nur als Warnung)
+        try {
+          const { data, error } = await this.supabaseClient.storage.from('daily-photos').list(uid, { limit: 1000, sortBy: { column: 'name', order: 'asc' } });
+          if (error) throw error;
+          envelope.photosMeta = (data || [])
+            .filter(f => /^\d{4}-\d{2}-\d{2}\.jpg$/.test(f.name))
+            .map(f => ({ date: f.name.slice(0, 10), path: 'daily-photos/' + uid + '/' + f.name }));
+        } catch (e) {
+          envelope.warnings.push('Foto-Liste konnte nicht geladen werden');
+        }
+        return envelope;
       }
 
       // ---- Weekly Reflection Methods (Phase 1) ----
@@ -4182,6 +4263,236 @@
     }
 
     // ============================================================================
+    // EXPORT (Art. 20 DSGVO) — JSON + Druck/HTML aus EINER Quelle (exportAllData)
+    // ============================================================================
+
+    // Aktuell vorbereiteter Export für das Teilen-Sheet (Mobile/iOS): { blob, filename, kind, label, url }
+    let exportReady = null;
+    let exportBusy = false;
+
+    function isExportEmpty(env) {
+      return !env || (env.entries.length === 0 && env.habits.length === 0 &&
+        env.reflections.weekly.length === 0 && env.reflections.challenge.length === 0);
+    }
+
+    // Mobile (iOS/Android, v. a. iOS-PWA): a[download] ist unzuverlässig → Teilen-Sheet mit frischem Tap
+    function isMobileExportEnv() {
+      const ua = navigator.userAgent || '';
+      const iOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const android = /Android/.test(ua);
+      return iOS || android || window.navigator.standalone === true;
+    }
+
+    const tageLabel = n => n + (n === 1 ? ' Tag' : ' Tage');
+
+    function exportDateStamp() {
+      const d = new Date();
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+
+    function formatExportDate(dateStr) {
+      // YYYY-MM-DD als lokales Datum interpretieren (kein UTC-Versatz)
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr || '');
+      const d = m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(dateStr);
+      return d.toLocaleDateString('de-DE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    }
+
+    function buildExportHtml(env) {
+      const e = escapeHtml;
+      const css = 'body{font-family:Georgia,serif;max-width:700px;margin:0 auto;padding:32px 20px;color:#333}' +
+        'h1{color:#B8862F;border-bottom:2px solid #E8B86D;padding-bottom:8px}h2{color:#555;margin-top:28px;font-size:16px}' +
+        'h3{color:#555;margin-top:36px;font-size:18px;border-bottom:1px solid #ddd;padding-bottom:4px}' +
+        '.entry{margin:12px 0;padding:12px 16px;background:#fdf6e3;border-radius:8px;border-left:3px solid #E8B86D;page-break-inside:avoid}' +
+        '.label{font-weight:bold;font-size:12px;color:#888;margin:8px 0 2px;text-transform:uppercase;letter-spacing:.03em}' +
+        '.answer{font-size:14px;line-height:1.5;margin:2px 0;white-space:pre-wrap}.meta{color:#888;font-size:13px}' +
+        '@media print{body{padding:0}}';
+      let out = '<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>Mein 6-Minuten-Tagebuch</title><style>' + css + '</style></head><body>';
+      out += '<h1>Mein 6-Minuten-Tagebuch</h1>';
+      out += '<p class="meta">Exportiert am ' + e(new Date(env.exportedAt).toLocaleString('de-DE')) + ' · ' +
+        tageLabel(env.entries.length) + ' mit Einträgen · App ' + e(env.appVersion) + '</p>';
+
+      const block = (title, content) => {
+        const parts = formatEntryContent(content);
+        if (!parts.length) return '';
+        let b = '<div class="entry"><div class="label" style="color:#B8862F">' + title + '</div>';
+        parts.forEach(p => {
+          b += '<div class="label">' + e(p.label) + '</div>';
+          p.items.forEach(it => { b += '<div class="answer">' + e(it) + '</div>'; });
+        });
+        return b + '</div>';
+      };
+
+      // Neueste zuerst
+      [...env.entries].reverse().forEach(en => {
+        out += '<h2>' + e(formatExportDate(en.date)) + '</h2>';
+        out += block('🌅 Morgens', en.morning);
+        out += block('🌙 Abends', en.evening);
+      });
+
+      if (env.reflections.weekly.length) {
+        out += '<h3>Wochenreflexionen</h3>';
+        [...env.reflections.weekly].reverse().forEach(r => {
+          const a = r.answers || {};
+          out += '<div class="entry"><div class="label" style="color:#B8862F">Woche ' + e(r.week) + '</div>';
+          WEEKLY_QUESTIONS.forEach(q => {
+            const v = a[q.key];
+            if (v === undefined || v === null || v === '') return;
+            out += '<div class="label">' + e(q.label) + '</div><div class="answer">' + e(q.type === 'rating' ? v + ' / 5' : v) + '</div>';
+          });
+          out += '</div>';
+        });
+      }
+
+      if (env.reflections.challenge.length) {
+        out += '<h3>Challenge-Reflexionen</h3>';
+        env.reflections.challenge.forEach(c => {
+          out += '<div class="entry"><div class="label">KW ' + e(c.week) + ' / ' + e(c.year) + '</div>' +
+            (c.rating != null ? '<div class="answer">Bewertung: ' + e(c.rating) + '</div>' : '') +
+            (c.note ? '<div class="answer">' + e(c.note) + '</div>' : '') + '</div>';
+        });
+      }
+
+      if (env.habits.length) {
+        out += '<h3>Habits</h3>';
+        env.habits.forEach(h => {
+          const n = env.habitLogs.filter(l => String(l.habit_id) === String(h.id) && l.completed !== false).length;
+          out += '<div class="answer">• ' + e(h.name || '') + ' — ' + n + '× erledigt</div>';
+        });
+      }
+
+      if (env.photosMeta.length) {
+        out += '<p class="meta" style="margin-top:28px">' + env.photosMeta.length + ' Tagesfotos gespeichert (nicht in diesem Export enthalten).</p>';
+      }
+      return out + '</body></html>';
+    }
+
+    function downloadBlob(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Nicht sofort revoken — Safari bricht sonst den Download ab
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
+
+    // Druck im GLEICHEN Dokument über ein verstecktes iframe (kein window.open → funktioniert in iOS-PWA)
+    function printHtmlInPage(htmlString) {
+      return new Promise((resolve, reject) => {
+        const old = document.getElementById('export-print-frame');
+        if (old) old.remove();
+        const frame = document.createElement('iframe');
+        frame.id = 'export-print-frame';
+        frame.setAttribute('aria-hidden', 'true');
+        frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+        frame.onload = () => {
+          try {
+            frame.contentWindow.focus();
+            frame.contentWindow.print();
+            resolve(true);
+          } catch (err) { reject(err); }
+        };
+        frame.srcdoc = htmlString;
+        document.body.appendChild(frame);
+      });
+    }
+
+    async function shareExportFile(ready) {
+      const file = new File([ready.blob], ready.filename, { type: ready.blob.type });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: ready.filename });
+        return true;
+      }
+      return false;
+    }
+
+    function closeExportSheet() {
+      if (exportReady?.url) setTimeout(() => URL.revokeObjectURL(exportReady.url), 60000);
+      exportReady = null;
+      app.render();
+    }
+
+    async function runExport(dataService, kind) {
+      if (exportBusy) return;
+      exportBusy = true;
+      showToast(kind === 'json' ? 'Export wird erstellt…' : 'Druckansicht wird erstellt…', 'info', 2500);
+      try {
+        const env = await dataService.exportAllData();
+        if (isExportEmpty(env)) {
+          showToast('Keine Daten zum Exportieren gefunden (0 Einträge)', 'info', 5000);
+          return;
+        }
+        const stamp = exportDateStamp();
+        const count = env.entries.length;
+        let blob, filename, label;
+        if (kind === 'json') {
+          const { warnings, ...clean } = env;
+          if (warnings.length) clean.warnings = warnings;
+          blob = new Blob([JSON.stringify(clean, null, 2)], { type: 'application/json' });
+          filename = `6min-tagebuch-export-${stamp}.json`;
+          label = 'JSON-Export';
+        } else {
+          blob = new Blob([buildExportHtml(env)], { type: 'text/html' });
+          filename = `6min-tagebuch-${stamp}.html`;
+          label = 'Druckansicht';
+        }
+        const warnSuffix = env.warnings.length ? ' (Hinweis: ' + env.warnings.join(', ') + ')' : '';
+
+        if (isMobileExportEnv()) {
+          // Teilen erfordert eine frische Nutzergeste → Sheet mit Buttons anzeigen
+          exportReady = { blob, filename, kind, label, count, url: URL.createObjectURL(blob), warnSuffix };
+          app.render();
+          return;
+        }
+
+        if (kind === 'json') {
+          downloadBlob(blob, filename);
+          showToast(`Export erstellt: ${tageLabel(count)}${warnSuffix}`, env.warnings.length ? 'info' : 'success', 5000);
+        } else {
+          await printHtmlInPage(await blob.text());
+          showToast(`Druckansicht geöffnet (${tageLabel(count)}) — „Als PDF sichern" wählen${warnSuffix}`, env.warnings.length ? 'info' : 'success', 5000);
+        }
+      } catch (e) {
+        console.error('[Export] fehlgeschlagen:', e?.message);
+        showToast('Export fehlgeschlagen — bitte Verbindung prüfen und erneut versuchen', 'error', 5000);
+      } finally {
+        exportBusy = false;
+      }
+    }
+
+    function ExportSheet() {
+      if (!exportReady) return null;
+      const r = exportReady;
+      return html`
+        <div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:999;display:flex;align-items:flex-end;justify-content:center" onclick=${(ev) => { if (ev.target === ev.currentTarget) closeExportSheet(); }}>
+          <div role="dialog" aria-label="Export bereit" style="background:var(--card);color:var(--text);width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom));box-shadow:0 -4px 20px rgba(0,0,0,0.2)">
+            <div style="font-size:17px;font-weight:600;margin-bottom:4px">${r.label} bereit</div>
+            <div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">${tageLabel(r.count)} · ${r.filename}${r.warnSuffix}</div>
+            <button class="btn btn-primary" style="width:100%;min-height:44px;margin-bottom:10px" onclick=${async () => {
+              try {
+                const ok = await shareExportFile(r);
+                if (ok) { showToast('Export geteilt ✓', 'success'); closeExportSheet(); }
+                else showToast('Teilen nicht verfügbar — „Öffnen / Laden" nutzen', 'info', 5000);
+              } catch (err) {
+                if (err?.name === 'AbortError') showToast('Teilen abgebrochen', 'info');
+                else showToast('Teilen fehlgeschlagen — „Öffnen / Laden" nutzen', 'error', 5000);
+              }
+            }}>📤 Teilen / In Dateien sichern</button>
+            ${r.kind === 'html' ? html`
+              <button class="btn btn-secondary" style="width:100%;min-height:44px;margin-bottom:10px" onclick=${async () => {
+                try { await printHtmlInPage(await r.blob.text()); showToast('Druckansicht geöffnet', 'success'); }
+                catch (_) { showToast('Drucken nicht möglich — Datei teilen und dort drucken', 'error', 5000); }
+              }}>🖨️ Drucken / Als PDF sichern</button>
+            ` : ''}
+            <a href=${r.url} download=${r.filename} target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;min-height:44px;margin-bottom:10px;color:var(--text);text-decoration:underline" onclick=${() => showToast('Datei geöffnet — über Teilen-Symbol sichern', 'info', 5000)}>Öffnen / Laden</a>
+            <button class="btn btn-secondary" style="width:100%;min-height:44px" onclick=${closeExportSheet}>Schließen</button>
+          </div>
+        </div>
+      `;
+    }
+
+    // ============================================================================
     // COMPONENT: Statistics
     // ============================================================================
 
@@ -4232,50 +4543,46 @@
         try {
           if (dataService.supabaseClient && dataService.userId) {
             const uid = dataService.userId;
-            // Einträge zählen
-            const entriesResult = await dataService.supabaseClient
-              .from('entries').select('date, entry_type').eq('user_id', uid);
-            const entries = entriesResult.data || [];
-            stats.totalEntries = entries.length;
-            const uniqueDates = new Set(entries.map(e => e.date));
-            stats.daysWithEntries = uniqueDates.size;
+            // Einträge aus daily_entries (entry_date + JSONB morning/evening) — wie Demo-Pfad
+            const entriesResult = await dataService._withRetry(async () => await dataService.supabaseClient
+              .from('daily_entries').select('entry_date, morning, evening').eq('user_id', uid));
+            if (entriesResult.error) throw entriesResult.error;
+            const entries = (entriesResult.data || []).filter(e => e.morning || e.evening);
+            entries.forEach(e => { if (e.morning) stats.totalEntries++; if (e.evening) stats.totalEntries++; });
+            const uniqueDates = [...new Set(entries.map(e => e.entry_date))].sort();
+            stats.daysWithEntries = uniqueDates.length;
             // Longest streak
-            const sorted = [...uniqueDates].sort();
-            let current = 1, max = sorted.length > 0 ? 1 : 0;
-            for (let i = 1; i < sorted.length; i++) {
-              const prev = new Date(sorted[i-1]); const curr = new Date(sorted[i]);
-              const diff = (curr - prev) / (1000*60*60*24);
+            let current = 1, max = uniqueDates.length > 0 ? 1 : 0;
+            for (let i = 1; i < uniqueDates.length; i++) {
+              const prev = new Date(uniqueDates[i-1]); const curr = new Date(uniqueDates[i]);
+              const diff = Math.round((curr - prev) / (1000*60*60*24));
               if (diff === 1) { current++; max = Math.max(max, current); } else current = 1;
             }
             stats.longestStreak = max;
-            // Mood aus weekly reflections
-            const reflResult = await dataService.supabaseClient
-              .from('weekly_reflections').select('week_rating').eq('user_id', uid);
-            const ratings = (reflResult.data || []).map(r => r.week_rating).filter(Boolean);
+            // Mood aus weekly reflections (week_rating liegt im JSONB answers)
+            const reflResult = await dataService._withRetry(async () => await dataService.supabaseClient
+              .from('weekly_reflections').select('answers').eq('user_id', uid));
+            const ratings = (reflResult.data || []).map(r => Number(r.answers?.week_rating)).filter(n => n > 0);
             stats.avgMood = ratings.length ? (ratings.reduce((a,b) => a+b, 0) / ratings.length).toFixed(1) : '-';
             // Habit completion
-            const habitsResult = await dataService.supabaseClient
-              .from('habits').select('id').eq('user_id', uid);
+            const habitsResult = await dataService._withRetry(async () => await dataService.supabaseClient
+              .from('habits').select('id').eq('user_id', uid));
             const habitIds = (habitsResult.data || []).map(h => h.id);
             if (habitIds.length > 0) {
-              const logsResult = await dataService.supabaseClient
-                .from('habit_logs').select('habit_id, completed').eq('user_id', uid);
+              const logsResult = await dataService._withRetry(async () => await dataService.supabaseClient
+                .from('habit_logs').select('habit_id, completed').eq('user_id', uid));
               const logs = logsResult.data || [];
               let hDone = 0, hTotal = logs.length;
               logs.forEach(l => { if (l.completed) hDone++; });
               stats.habitRate = hTotal ? Math.round(hDone/hTotal*100) : 0;
             }
-            // Top words aus grateful Einträgen
-            const gratefulResult = await dataService.supabaseClient
-              .from('entries').select('content').eq('user_id', uid).eq('entry_type', 'morning');
+            // Top words aus morning.grateful
             const words = {};
-            (gratefulResult.data || []).forEach(e => {
-              try {
-                const c = typeof e.content === 'string' ? JSON.parse(e.content) : e.content;
-                if (c?.grateful) c.grateful.forEach(g => {
-                  if (g) g.toLowerCase().split(/\s+/).filter(w => w.length > 3).forEach(w => { words[w] = (words[w]||0) + 1; });
-                });
-              } catch(_) {}
+            entries.forEach(e => {
+              const m = typeof e.morning === 'string' ? (() => { try { return JSON.parse(e.morning); } catch (_) { return null; } })() : e.morning;
+              if (m?.grateful) m.grateful.forEach(g => {
+                if (g) g.toLowerCase().split(/\s+/).filter(w => w.length > 3).forEach(w => { words[w] = (words[w]||0) + 1; });
+              });
             });
             stats.topWords = Object.entries(words).sort((a,b) => b[1]-a[1]).slice(0, 8).map(([w,c]) => ({word:w, count:c}));
           }
@@ -4363,60 +4670,13 @@
               <div class="settings-label">🔒 Datenschutzhinweise</div>
               <div>→</div>
             </div>
-            <div class="settings-item" style="cursor:pointer" onclick=${() => {
-              try {
-                const data = dataService.isDemo
-                  ? JSON.stringify(DEMO_DATA, null, 2)
-                  : 'Datenexport ist nur im Demo-Modus verfügbar. Im Cloud-Modus kontaktiere den Betreiber.';
-                const blob = new Blob([data], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url; a.download = '6min-tagebuch-export.json';
-                a.click(); URL.revokeObjectURL(url);
-                showToast('Daten exportiert', 'success');
-              } catch (e) {
-                showToast('Export fehlgeschlagen', 'error');
-              }
-            }}>
-              <div class="settings-label">📥 Meine Daten exportieren</div>
+            <div class="settings-item" style="cursor:pointer" onclick=${() => runExport(dataService, 'json')}>
+              <div class="settings-label">📥 Meine Daten exportieren (JSON)</div>
               <div style="font-size:12px;color:var(--text-secondary)">Art. 20 DSGVO</div>
             </div>
-            <div class="settings-item" style="cursor:pointer" onclick=${async () => {
-              try {
-                showToast('PDF wird erstellt...', 'info');
-                const entries = dataService.isDemo ? DEMO_DATA.entries || {} : {};
-                let htmlContent = '<html><head><style>body{font-family:Georgia,serif;max-width:700px;margin:0 auto;padding:40px;color:#333}h1{color:#E8B86D;border-bottom:2px solid #E8B86D;padding-bottom:8px}h2{color:#666;margin-top:32px;font-size:16px}.entry{margin:16px 0;padding:16px;background:#fdf6e3;border-radius:8px;border-left:3px solid #E8B86D}.label{font-weight:bold;font-size:13px;color:#888;margin-bottom:4px}.answer{font-size:14px;line-height:1.6;margin-bottom:8px}</style></head><body>';
-                htmlContent += '<h1>Mein 6-Minuten-Tagebuch</h1>';
-                htmlContent += '<p style="color:#888">Exportiert am ' + new Date().toLocaleDateString('de-DE') + '</p>';
-
-                const dates = Object.keys(entries).sort().reverse();
-                for (const date of dates) {
-                  const entry = entries[date];
-                  htmlContent += '<h2>' + new Date(date).toLocaleDateString('de-DE', {weekday:'long', year:'numeric', month:'long', day:'numeric'}) + '</h2>';
-                  if (entry.morning) {
-                    htmlContent += '<div class="entry"><div class="label">Morgens</div>';
-                    if (entry.morning.grateful) entry.morning.grateful.forEach((g,i) => { if(g) htmlContent += '<div class="answer">Dankbar ' + (i+1) + ': ' + g + '</div>'; });
-                    if (entry.morning.affirmation) htmlContent += '<div class="answer">Affirmation: ' + entry.morning.affirmation + '</div>';
-                    htmlContent += '</div>';
-                  }
-                  if (entry.evening) {
-                    htmlContent += '<div class="entry"><div class="label">Abends</div>';
-                    if (entry.evening.great_things) entry.evening.great_things.forEach((g,i) => { if(g) htmlContent += '<div class="answer">Schönes ' + (i+1) + ': ' + g + '</div>'; });
-                    if (entry.evening.good_deed) htmlContent += '<div class="answer">Gutes getan: ' + entry.evening.good_deed + '</div>';
-                    htmlContent += '</div>';
-                  }
-                }
-                htmlContent += '</body></html>';
-
-                const printWindow = window.open('', '_blank');
-                printWindow.document.write(htmlContent);
-                printWindow.document.close();
-                printWindow.print();
-                showToast('PDF-Druckvorschau geöffnet', 'success');
-              } catch (e) { showToast('PDF-Export fehlgeschlagen', 'error'); }
-            }}>
-              <div class="settings-label">📄 Als PDF exportieren</div>
-              <div style="font-size:12px;color:var(--text-secondary)">Druckvorschau</div>
+            <div class="settings-item" style="cursor:pointer" onclick=${() => runExport(dataService, 'html')}>
+              <div class="settings-label">📄 Als PDF / HTML drucken</div>
+              <div style="font-size:12px;color:var(--text-secondary)">alle Einträge</div>
             </div>
           </div>
 
@@ -4456,7 +4716,7 @@
             <div class="settings-title">Über die App</div>
             <div class="settings-item">
               <div class="settings-label">Version</div>
-              <div class="settings-value">2.6.0</div>
+              <div class="settings-value">${APP_VERSION}</div>
             </div>
             <div class="settings-item">
               <div class="settings-label">Entwickelt mit ❤️</div>
@@ -4530,7 +4790,8 @@
 
                 <p style="margin-bottom:12px"><strong style="color:var(--text)">Welche Daten werden gespeichert?</strong></p>
                 <p style="margin-bottom:12px">Im <em>Demo-Modus</em> werden alle Daten ausschließlich lokal auf deinem Gerät gespeichert (localStorage). Es werden keine Daten an Server übertragen.</p>
-                <p style="margin-bottom:12px">Im <em>Cloud-Modus</em> werden Tagebuch-Einträge, Habits und Reflektionen verschlüsselt bei Supabase (EU-Rechenzentrum) gespeichert. Dein E-Mail-Adresse dient zur Authentifizierung.</p>
+                <p style="margin-bottom:12px">Im <em>Cloud-Modus</em> werden Tagebuch-Einträge, Habits, Reflexionen und Tagesfotos bei Supabase (EU-Rechenzentrum) gespeichert. Die Übertragung erfolgt per HTTPS/TLS, die Speicherung ist beim Anbieter serverseitig verschlüsselt (at rest). Zugriff hat nur dein Login – abgesichert über Row Level Security (RLS). Deine E-Mail-Adresse dient zur Authentifizierung.</p>
+                <p style="margin-bottom:12px">Eine clientseitige Ende-zu-Ende-Verschlüsselung ist aktuell <strong>nicht</strong> aktiv. Über „Meine Daten exportieren" kannst du alle Einträge jederzeit als JSON- oder HTML-Datei herunterladen (Art. 20 DSGVO).</p>
 
                 <p style="margin-bottom:12px"><strong style="color:var(--text)">Rechtsgrundlage:</strong> Art. 6 Abs. 1 lit. a DSGVO (Einwilligung durch Nutzung der App)</p>
 
@@ -4671,7 +4932,7 @@
             if ((h === 7 && m === 0) || (h === 20 && m === 0)) {
               new Notification('6-Minuten-Tagebuch', {
                 body: h === 7 ? 'Zeit für deinen Morgen-Eintrag ☀️' : 'Zeit für deinen Abend-Eintrag 🌙',
-                icon: '/icon-192.png'
+                icon: './icon-192.png'
               });
             }
           }, 60000);
@@ -4942,6 +5203,7 @@
                 title="Feedback geben">💬</button>
             ` : ''}
             ${feedbackOpen ? html`<${FeedbackModal} onClose=${() => { feedbackOpen = false; app.render(); }} />` : ''}
+            <${ExportSheet} />
             <${Toast} />
           </div>
         `;
