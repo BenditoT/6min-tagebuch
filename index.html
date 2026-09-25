@@ -1034,6 +1034,19 @@
       gap: 16px;
     }
 
+    .archive-toggle { display:flex; gap:4px; padding:4px; background:var(--bg-alt); border-radius:12px; }
+    .archive-toggle button { flex:1; min-height:40px; border:none; border-radius:9px; background:transparent; color:var(--text-secondary); font-size:14px; font-weight:600; cursor:pointer; }
+    .archive-toggle button.active { background:var(--card); color:var(--text); box-shadow:0 1px 3px var(--shadow); }
+    .archive-search input { width:100%; box-sizing:border-box; min-height:44px; padding:10px 14px; border:1px solid var(--border); border-radius:12px; background:var(--card); color:var(--text); font-size:16px; }
+    .archive-hint { font-size:12px; color:var(--text-secondary); }
+    .archive-list { display:flex; flex-direction:column; gap:8px; }
+    .archive-row { display:block; width:100%; text-align:left; padding:12px 14px; border:1px solid var(--border); border-radius:12px; background:var(--card); color:var(--text); cursor:pointer; font:inherit; min-height:44px; }
+    .archive-row:active { background:var(--bg-alt); }
+    .archive-row-head { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:4px; }
+    .archive-row-date { font-weight:600; font-size:15px; }
+    .archive-row-icons { font-size:14px; white-space:nowrap; }
+    .archive-row-preview { font-size:13px; color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
     .calendar-header {
       display: flex;
       justify-content: space-between;
@@ -1747,7 +1760,11 @@
     }
 
     // Demo-Daten: Lade aus localStorage oder verwende Defaults
-    const APP_VERSION = '2.6.1';
+    const APP_VERSION = '2.7.0';
+    // Lokales Datum als YYYY-MM-DD (nie toISOString → UTC-Versatz)
+    function toLocalDateStr(d) {
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
     const DEMO_STORAGE_KEY = '6min_demo_data';
     const DEMO_DEFAULTS = {
       entries: {},
@@ -2137,7 +2154,10 @@
       }
 
       async getEntries(date = null) {
-        const targetDate = date ? new Date(date).toISOString().split('T')[0] : this.getTodayDate();
+        // YYYY-MM-DD unverändert durchreichen (kein UTC-Versatz über toISOString)
+        const targetDate = !date ? this.getTodayDate()
+          : (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) ? date
+          : toLocalDateStr(new Date(date));
 
         if (this.isDemo) {
           return DEMO_DATA.entries[targetDate] || { morning: null, evening: null };
@@ -2275,6 +2295,48 @@
           console.error('getAllEntryDates error:', e);
           return [];
         }
+      }
+
+      // ---- Chronologische Liste (Archiv) ----
+      // Liefert Einträge absteigend nach Datum: [{ date, morning, evening }]; beforeDate exklusiv
+      async listEntriesPage({ limit = 30, beforeDate = null } = {}) {
+        if (this.isDemo) {
+          const entries = DEMO_DATA.entries || {};
+          return Object.keys(entries)
+            .filter(d => (entries[d]?.morning || entries[d]?.evening) && (!beforeDate || d < beforeDate))
+            .sort().reverse().slice(0, limit)
+            .map(d => ({ date: d, morning: entries[d].morning || null, evening: entries[d].evening || null }));
+        }
+        if (!this.supabaseClient || !this.userId) return [];
+        const res = await this._withRetry(async () => {
+          let q = this.supabaseClient.from('daily_entries')
+            .select('entry_date, morning, evening')
+            .eq('user_id', this.userId);
+          if (beforeDate) q = q.lt('entry_date', beforeDate);
+          return await q.order('entry_date', { ascending: false }).limit(limit);
+        });
+        if (res.error) throw new Error(res.error.message || 'Liste konnte nicht geladen werden');
+        return (res.data || [])
+          .filter(e => e.morning || e.evening)
+          .map(e => ({ date: e.entry_date, morning: e.morning || null, evening: e.evening || null }));
+      }
+
+      // Set aller Tage mit Foto (Demo: Store; Cloud: Storage-Liste des Users)
+      async listPhotoDates() {
+        if (this.isDemo) {
+          return new Set(Object.keys(DEMO_DATA.photos || {}).filter(d => DEMO_DATA.photos[d]));
+        }
+        const dates = new Set();
+        if (!this.supabaseClient || !this.userId) return dates;
+        try {
+          const { data, error } = await this.supabaseClient.storage.from('daily-photos')
+            .list(this.userId, { limit: 1000, sortBy: { column: 'name', order: 'desc' } });
+          if (error) throw error;
+          (data || []).forEach(f => { if (/^\d{4}-\d{2}-\d{2}\.jpg$/.test(f.name)) dates.add(f.name.slice(0, 10)); });
+        } catch (e) {
+          console.warn('[Photos] Storage-Liste nicht verfügbar');
+        }
+        return dates;
       }
 
       // ---- Vollständiger Datenexport (Art. 20 DSGVO) — eine Quelle für JSON + Druck ----
@@ -2616,7 +2678,7 @@
           if (habits.length > 0) {
             const since = new Date();
             since.setDate(since.getDate() - 28);
-            const sinceStr = since.toISOString().split('T')[0];
+            const sinceStr = toLocalDateStr(since);
             try {
               const tracksResult = await this._withRetry(async () =>
                 await this.supabaseClient.from('habit_logs').select('habit_id, log_date')
@@ -3749,6 +3811,80 @@
     let archiveLightboxPhoto = null; // Separater State für Fullscreen-Lightbox im Archiv
     let archiveMonthEntryDates = []; // Dates mit Einträgen im aktuellen Monat
     let archiveMonthLoaded = ''; // "YYYY-MM" des geladenen Monats
+    // v2.7.0: Liste als Default + modulweite Request-Guards (vorher pro Render neu → Race/Loading kaputt)
+    let archiveMode = 'list'; // 'list' | 'calendar'
+    let archiveDetailReqId = 0;
+    let archiveDetailLoading = false;
+    const ARCHIVE_PAGE = 30;
+    let archiveListReqId = 0;
+    let archiveList = { items: [], loaded: false, loading: false, hasMore: true, error: null, photoDates: null };
+    let archiveSearch = '';
+
+    function resetArchiveState() {
+      archiveSelectedDate = null;
+      archiveSelectedEntry = null;
+      archiveSelectedPhoto = null;
+      archiveLightboxPhoto = null;
+      archiveDetailLoading = false;
+      archiveDetailReqId++;
+      archiveMonthLoaded = '';
+      archiveListReqId++;
+      archiveList = { items: [], loaded: false, loading: false, hasMore: true, error: null, photoDates: null };
+    }
+
+    async function loadArchivePage(dataService, reset = false) {
+      if (archiveList.loading && !reset) return;
+      const reqId = ++archiveListReqId;
+      if (reset) archiveList = { items: [], loaded: false, loading: true, hasMore: true, error: null, photoDates: null };
+      archiveList.loading = true;
+      archiveList.error = null;
+      // Nie synchron rendern: loadArchivePage wird auch aus dem Render-Pfad angestoßen (sonst doppeltes DOM)
+      setTimeout(() => app.render(), 0);
+      try {
+        const before = archiveList.items.length ? archiveList.items[archiveList.items.length - 1].date : null;
+        const [page, photos] = await Promise.all([
+          dataService.listEntriesPage({ limit: ARCHIVE_PAGE, beforeDate: before }),
+          archiveList.photoDates ? Promise.resolve(archiveList.photoDates) : dataService.listPhotoDates()
+        ]);
+        if (reqId !== archiveListReqId) return;
+        archiveList.photoDates = photos;
+        archiveList.items = archiveList.items.concat(page);
+        archiveList.hasMore = page.length === ARCHIVE_PAGE;
+        archiveList.loaded = true;
+      } catch (e) {
+        if (reqId === archiveListReqId) archiveList.error = 'Einträge konnten nicht geladen werden';
+      } finally {
+        if (reqId === archiveListReqId) { archiveList.loading = false; app.render(); }
+      }
+    }
+
+    function archiveDayLabel(dateStr) {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const [y, m, d] = dateStr.split('-').map(Number);
+      const day = new Date(y, m - 1, d);
+      const diff = Math.round((today - day) / 86400000);
+      if (diff === 0) return 'Heute';
+      if (diff === 1) return 'Gestern';
+      const opts = { weekday: 'short', day: 'numeric', month: 'short' };
+      if (y !== today.getFullYear()) opts.year = 'numeric';
+      return day.toLocaleDateString('de-DE', opts);
+    }
+
+    function entryPreview(item) {
+      for (const c of [item.morning, item.evening]) {
+        for (const p of formatEntryContent(c)) {
+          const t = p.items.find(x => x && String(x).trim());
+          if (t) { const str = String(t).trim(); return str.length > 90 ? str.slice(0, 90) + '…' : str; }
+        }
+      }
+      return '';
+    }
+
+    function entryMatches(item, q) {
+      if (!q) return true;
+      const text = [item.morning, item.evening].flatMap(c => formatEntryContent(c).flatMap(p => p.items)).join(' ').toLowerCase();
+      return text.includes(q);
+    }
 
     // XSS-Schutz: HTML-Entities escapen bevor User-Content gerendert wird
     function escapeHtml(text) {
@@ -3782,7 +3918,9 @@
       const monthKey = `${archiveViewMonth.getFullYear()}-${String(archiveViewMonth.getMonth()+1).padStart(2,'0')}`;
       if (archiveMonthLoaded !== monthKey) {
         archiveMonthLoaded = monthKey;
+        archiveMonthEntryDates = [];
         dataService.getEntryDatesForMonth(archiveViewMonth.getFullYear(), archiveViewMonth.getMonth()).then(dates => {
+          if (archiveMonthLoaded !== monthKey) return; // Monat inzwischen gewechselt
           archiveMonthEntryDates = dates;
           app.render();
         });
@@ -3809,145 +3947,222 @@
       const today = new Date();
       const isCurrentMonth = archiveViewMonth.getMonth() === today.getMonth() && archiveViewMonth.getFullYear() === today.getFullYear();
 
-      let _archiveRequestId = 0;
       const handleDayClick = async (dateStr) => {
         if (!dateStr) return;
+        const requestId = ++archiveDetailReqId;
         archiveSelectedDate = dateStr;
         archiveSelectedEntry = null;
         archiveSelectedPhoto = null;
+        archiveDetailLoading = true;
         app.render(); // Sofort UI updaten (loading state)
-        const requestId = ++_archiveRequestId;
-        const entry = await dataService.getEntries(dateStr);
-        if (requestId !== _archiveRequestId) return; // Veralteter Request → ignorieren
-        archiveSelectedEntry = entry;
-        // Lade auch das Foto für diesen Tag
-        const photo = await dataService.getDailyPhoto(dateStr);
-        if (requestId !== _archiveRequestId) return;
-        archiveSelectedPhoto = photo;
+        try {
+          const entry = await dataService.getEntries(dateStr);
+          if (requestId !== archiveDetailReqId) return; // Veralteter Request → ignorieren
+          archiveSelectedEntry = entry;
+          archiveDetailLoading = false;
+          app.render();
+          // Foto nachladen (blockiert Text nicht)
+          const photo = await dataService.getDailyPhoto(dateStr);
+          if (requestId !== archiveDetailReqId) return;
+          archiveSelectedPhoto = photo;
+          app.render();
+        } catch (e) {
+          if (requestId === archiveDetailReqId) { archiveDetailLoading = false; app.render(); }
+        }
+      };
+
+      const closeDetail = () => {
+        archiveDetailReqId++;
+        archiveSelectedDate = null;
+        archiveSelectedEntry = null;
+        archiveSelectedPhoto = null;
+        archiveDetailLoading = false;
         app.render();
       };
 
-      // Formatiere Eintrag hübsch
-      const renderEntry = (entry, type) => {
+      // Formatiere Eintrag hübsch (Preact escaped Text selbst — kein zusätzliches escapeHtml, sonst &amp; sichtbar)
+      const renderEntry = (entry) => {
         if (!entry) return '';
         const parts = formatEntryContent(entry);
         if (!parts.length) return html`<div class="entry-text" style="color:var(--text-secondary);font-style:italic">Keine Details</div>`;
         return parts.map(p => html`
           <div style="margin-bottom:8px">
-            <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px">${escapeHtml(p.label)}</div>
-            ${p.items.map(item => html`<div style="font-size:14px;color:var(--text-secondary);padding:2px 0">• ${escapeHtml(item)}</div>`)}
+            <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px">${p.label}</div>
+            ${p.items.map(item => html`<div style="font-size:14px;color:var(--text-secondary);padding:2px 0;white-space:pre-wrap">• ${item}</div>`)}
           </div>
         `);
       };
 
-      return html`
-        <div class="screen archive-screen active">
-          <div class="calendar-header">
-            <div class="calendar-month">${monthNames[archiveViewMonth.getMonth()]} ${archiveViewMonth.getFullYear()}</div>
-            <div class="calendar-nav">
-              <button onclick=${() => {
-                archiveViewMonth = new Date(archiveViewMonth.getFullYear(), archiveViewMonth.getMonth() - 1);
-                archiveSelectedDate = null;
-                archiveSelectedEntry = null;
-                app.render();
-              }}>←</button>
-              <button onclick=${() => {
-                archiveViewMonth = new Date(archiveViewMonth.getFullYear(), archiveViewMonth.getMonth() + 1);
-                archiveSelectedDate = null;
-                archiveSelectedEntry = null;
-                app.render();
-              }}>→</button>
+      const hasContent = archiveSelectedEntry && (archiveSelectedEntry.morning || archiveSelectedEntry.evening);
+      const selectedLabel = !archiveSelectedDate ? '' : (() => {
+        const rel = archiveDayLabel(archiveSelectedDate);
+        const full = formatExportDate(archiveSelectedDate);
+        return (rel === 'Heute' || rel === 'Gestern') ? rel + ' · ' + full : full;
+      })();
+
+      const renderDetail = () => html`
+        ${archiveSelectedDate && archiveDetailLoading ? html`
+          <div class="entry-detail" style="text-align:center;padding:20px">
+            <div style="color:var(--text-secondary);font-size:14px">Lade Eintrag…</div>
+          </div>
+        ` : ''}
+
+        ${!archiveDetailLoading && hasContent ? html`
+          <div class="entry-detail">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+              <div style="font-size:13px;font-weight:600;color:var(--text)">${selectedLabel}</div>
             </div>
-          </div>
-
-          <div class="weekdays">
-            ${weekDays.map(day => html`<div class="weekday">${day}</div>`)}
-          </div>
-
-          <div class="calendar-grid">
-            ${calendarDays.map(({ day, isOtherMonth, dateStr, hasEntry }) => html`
-              <div
-                class=${'calendar-day' + (isOtherMonth ? ' other-month' : '') + (isCurrentMonth && day === today.getDate() && !isOtherMonth ? ' today' : '') + (hasEntry ? ' has-entry' : '') + (dateStr === archiveSelectedDate ? ' selected' : '')}
-                onclick=${() => !isOtherMonth && handleDayClick(dateStr)}
-                style=${dateStr === archiveSelectedDate ? 'background:var(--accent-light);color:var(--bg);font-weight:700' : ''}
-              >
-                ${day}
+            ${archiveSelectedPhoto ? html`
+              <div style="margin-bottom:16px;padding:12px;background:var(--bg-alt);border-radius:12px">
+                <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">📸 Bild des Tages</div>
+                <img src=${archiveSelectedPhoto} style="width:100%;max-height:300px;object-fit:cover;border-radius:10px;cursor:pointer;display:block" onclick=${() => {
+                  archiveLightboxPhoto = archiveSelectedPhoto;
+                  app.render();
+                }} alt=${'Foto vom ' + archiveSelectedDate} />
               </div>
-            `)}
-          </div>
-
-          ${archiveSelectedDate && !archiveSelectedEntry && _archiveRequestId > 0 ? html`
-            <div class="entry-detail" style="text-align:center;padding:20px">
-              <div style="color:var(--text-secondary);font-size:14px">Lade Eintrag…</div>
-            </div>
-          ` : ''}
-
-          ${archiveSelectedEntry && (archiveSelectedEntry.morning || archiveSelectedEntry.evening) ? html`
-            <div class="entry-detail">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-                <div style="font-size:13px;font-weight:600;color:var(--text)">${archiveSelectedDate}</div>
-              </div>
-              ${archiveSelectedPhoto ? html`
-                <div style="margin-bottom:16px;padding:12px;background:var(--bg-alt);border-radius:12px">
-                  <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">📸 Bild des Tages</div>
-                  <img src=${archiveSelectedPhoto} style="width:100%;max-height:300px;object-fit:cover;border-radius:10px;cursor:pointer;display:block" onclick=${() => {
-                    archiveLightboxPhoto = archiveSelectedPhoto;
-                    app.render();
-                  }} alt="Photo from ${archiveSelectedDate}" />
-                </div>
-              ` : ''}
-              ${archiveSelectedEntry.morning ? html`
-                <div style="display:flex;justify-content:space-between;align-items:center">
-                  <div class="entry-section-title">🌅 Morgens</div>
-                  <button style="background:none;border:none;color:var(--accent-light);cursor:pointer;font-size:12px;padding:4px" onclick=${() => {
-                    window._backfillDate = archiveSelectedDate;
-                    window._editContent = archiveSelectedEntry.morning;
-                    if (window._appNavigate) window._appNavigate('journal', 'morning');
-                  }}>✎ Bearbeiten</button>
-                </div>
-                ${renderEntry(archiveSelectedEntry.morning, 'morning')}
-              ` : html`
-                <button class="btn btn-small" style="width:100%;margin-bottom:12px;background:var(--bg-alt);color:var(--text);border:1px dashed var(--border);border-radius:12px;padding:12px;font-size:13px;cursor:pointer" onclick=${() => {
+            ` : ''}
+            ${archiveSelectedEntry.morning ? html`
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <div class="entry-section-title">🌅 Morgens</div>
+                <button style="background:none;border:none;color:var(--accent-light);cursor:pointer;font-size:12px;padding:4px;min-height:44px" onclick=${() => {
                   window._backfillDate = archiveSelectedDate;
+                  window._editContent = archiveSelectedEntry.morning;
                   if (window._appNavigate) window._appNavigate('journal', 'morning');
-                }}>🌅 Morgens nachtragen</button>
-              `}
-              ${archiveSelectedEntry.evening ? html`
-                <div style="display:flex;justify-content:space-between;align-items:center">
-                  <div class="entry-section-title">🌙 Abends</div>
-                  <button style="background:none;border:none;color:var(--accent-light);cursor:pointer;font-size:12px;padding:4px" onclick=${() => {
-                    window._backfillDate = archiveSelectedDate;
-                    window._editContent = archiveSelectedEntry.evening;
-                    if (window._appNavigate) window._appNavigate('journal', 'evening');
-                  }}>✎ Bearbeiten</button>
-                </div>
-                ${renderEntry(archiveSelectedEntry.evening, 'evening')}
-              ` : html`
-                <button class="btn btn-small" style="width:100%;margin-top:8px;background:var(--bg-alt);color:var(--text);border:1px dashed var(--border);border-radius:12px;padding:12px;font-size:13px;cursor:pointer" onclick=${() => {
-                  window._backfillDate = archiveSelectedDate;
-                  if (window._appNavigate) window._appNavigate('journal', 'evening');
-                }}>🌙 Abends nachtragen</button>
-              `}
-            </div>
-          ` : ''}
-
-          ${archiveSelectedDate && (!archiveSelectedEntry || (!archiveSelectedEntry.morning && !archiveSelectedEntry.evening)) && new Date(archiveSelectedDate) <= new Date() ? html`
-            <div class="entry-detail" style="text-align:center">
-              <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">${archiveSelectedDate}</div>
-              <div style="font-size:14px;color:var(--text-secondary);margin-bottom:16px">Kein Eintrag für diesen Tag</div>
-              <button class="btn btn-primary btn-small" onclick=${() => {
+                }}>✎ Bearbeiten</button>
+              </div>
+              ${renderEntry(archiveSelectedEntry.morning)}
+            ` : html`
+              <button class="btn btn-small" style="width:100%;margin-bottom:12px;background:var(--bg-alt);color:var(--text);border:1px dashed var(--border);border-radius:12px;padding:12px;font-size:13px;cursor:pointer" onclick=${() => {
                 window._backfillDate = archiveSelectedDate;
                 if (window._appNavigate) window._appNavigate('journal', 'morning');
-              }}>
-                📝 Eintrag nachtragen
-              </button>
+              }}>🌅 Morgens nachtragen</button>
+            `}
+            ${archiveSelectedEntry.evening ? html`
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <div class="entry-section-title">🌙 Abends</div>
+                <button style="background:none;border:none;color:var(--accent-light);cursor:pointer;font-size:12px;padding:4px;min-height:44px" onclick=${() => {
+                  window._backfillDate = archiveSelectedDate;
+                  window._editContent = archiveSelectedEntry.evening;
+                  if (window._appNavigate) window._appNavigate('journal', 'evening');
+                }}>✎ Bearbeiten</button>
+              </div>
+              ${renderEntry(archiveSelectedEntry.evening)}
+            ` : html`
+              <button class="btn btn-small" style="width:100%;margin-top:8px;background:var(--bg-alt);color:var(--text);border:1px dashed var(--border);border-radius:12px;padding:12px;font-size:13px;cursor:pointer" onclick=${() => {
+                window._backfillDate = archiveSelectedDate;
+                if (window._appNavigate) window._appNavigate('journal', 'evening');
+              }}>🌙 Abends nachtragen</button>
+            `}
+          </div>
+        ` : ''}
+
+        ${archiveSelectedDate && !archiveDetailLoading && !hasContent && archiveSelectedDate <= toLocalDateStr(new Date()) ? html`
+          <div class="entry-detail" style="text-align:center">
+            <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">${selectedLabel}</div>
+            <div style="font-size:14px;color:var(--text-secondary);margin-bottom:16px">Kein Eintrag für diesen Tag</div>
+            <button class="btn btn-primary btn-small" onclick=${() => {
+              window._backfillDate = archiveSelectedDate;
+              if (window._appNavigate) window._appNavigate('journal', 'morning');
+            }}>
+              📝 Eintrag nachtragen
+            </button>
+          </div>
+        ` : ''}
+      `;
+
+      // ---- Liste ----
+      if (archiveMode === 'list' && !archiveList.loaded && !archiveList.loading && !archiveList.error) {
+        loadArchivePage(dataService, true);
+      }
+      const q = archiveSearch.trim().toLowerCase();
+      const visible = archiveList.items.filter(it => entryMatches(it, q));
+      const photoDates = archiveList.photoDates || new Set();
+
+      const renderList = () => html`
+        <div class="archive-search">
+          <input type="search" placeholder="🔍 Einträge durchsuchen" value=${archiveSearch} aria-label="Einträge durchsuchen"
+            oninput=${e => { archiveSearch = e.target.value; app.render(); }} />
+        </div>
+        ${q ? html`<div class="archive-hint">Durchsucht ${archiveList.items.length} geladene Einträge · ${visible.length} Treffer${archiveList.hasMore ? ' — „Ältere laden" erweitert die Suche' : ''}</div>` : ''}
+        ${archiveList.error ? html`
+          <div class="entry-detail" style="text-align:center">
+            <div style="color:var(--text-secondary);margin-bottom:12px">${archiveList.error}</div>
+            <button class="btn btn-secondary btn-small" onclick=${() => loadArchivePage(dataService, !archiveList.items.length)}>Erneut versuchen</button>
+          </div>
+        ` : ''}
+        ${archiveList.loaded && archiveList.items.length === 0 && !archiveList.error ? html`
+          <div class="entry-detail" style="text-align:center;color:var(--text-secondary)">
+            Noch keine Einträge. Schreib heute deinen ersten — oder trage über den Kalender einen Tag nach.
+          </div>
+        ` : ''}
+        <div class="archive-list" role="list">
+          ${visible.map(it => html`
+            <button key=${it.date} class="archive-row" role="listitem" onclick=${() => handleDayClick(it.date)}>
+              <div class="archive-row-head">
+                <span class="archive-row-date">${archiveDayLabel(it.date)}</span>
+                <span class="archive-row-icons" aria-label=${[it.morning ? 'Morgen' : '', it.evening ? 'Abend' : '', photoDates.has(it.date) ? 'Foto' : ''].filter(Boolean).join(', ')}>
+                  ${it.morning ? '🌅' : ''}${it.evening ? ' 🌙' : ''}${photoDates.has(it.date) ? ' 📸' : ''}
+                </span>
+              </div>
+              <div class="archive-row-preview">${entryPreview(it) || 'Ohne Text'}</div>
+            </button>
+          `)}
+        </div>
+        ${archiveList.loading ? html`<div class="archive-hint" style="text-align:center">Lade Einträge…</div>` : ''}
+        ${archiveList.loaded && archiveList.hasMore && !archiveList.loading ? html`
+          <button class="btn btn-secondary" style="width:100%;min-height:44px" onclick=${() => loadArchivePage(dataService)}>Ältere Einträge laden</button>
+        ` : ''}
+      `;
+
+      return html`
+        <div class="screen archive-screen active">
+          <div class="archive-toggle" role="tablist" aria-label="Ansicht">
+            <button role="tab" aria-selected=${archiveMode === 'list'} class=${archiveMode === 'list' ? 'active' : ''}
+              onclick=${() => { if (archiveMode !== 'list') { archiveMode = 'list'; closeDetail(); } }}>☰ Liste</button>
+            <button role="tab" aria-selected=${archiveMode === 'calendar'} class=${archiveMode === 'calendar' ? 'active' : ''}
+              onclick=${() => { if (archiveMode !== 'calendar') { archiveMode = 'calendar'; closeDetail(); } }}>📅 Kalender</button>
+          </div>
+
+          ${archiveMode === 'list' ? (archiveSelectedDate ? html`
+            <button class="btn btn-secondary" style="align-self:flex-start;min-height:44px;padding:0 16px" onclick=${closeDetail}>← Zur Liste</button>
+            ${renderDetail()}
+          ` : renderList()) : html`
+            <div class="calendar-header">
+              <div class="calendar-month">${monthNames[archiveViewMonth.getMonth()]} ${archiveViewMonth.getFullYear()}</div>
+              <div class="calendar-nav">
+                <button aria-label="Vorheriger Monat" onclick=${() => {
+                  archiveViewMonth = new Date(archiveViewMonth.getFullYear(), archiveViewMonth.getMonth() - 1);
+                  closeDetail();
+                }}>←</button>
+                <button aria-label="Nächster Monat" onclick=${() => {
+                  archiveViewMonth = new Date(archiveViewMonth.getFullYear(), archiveViewMonth.getMonth() + 1);
+                  closeDetail();
+                }}>→</button>
+              </div>
             </div>
-          ` : ''}
+
+            <div class="weekdays">
+              ${weekDays.map(day => html`<div class="weekday">${day}</div>`)}
+            </div>
+
+            <div class="calendar-grid">
+              ${calendarDays.map(({ day, isOtherMonth, dateStr, hasEntry }) => html`
+                <div
+                  class=${'calendar-day' + (isOtherMonth ? ' other-month' : '') + (isCurrentMonth && day === today.getDate() && !isOtherMonth ? ' today' : '') + (hasEntry ? ' has-entry' : '') + (dateStr === archiveSelectedDate ? ' selected' : '')}
+                  onclick=${() => !isOtherMonth && handleDayClick(dateStr)}
+                  style=${dateStr === archiveSelectedDate ? 'background:var(--accent-light);color:var(--bg);font-weight:700' : ''}
+                >
+                  ${day}
+                </div>
+              `)}
+            </div>
+            ${renderDetail()}
+          `}
 
           ${archiveLightboxPhoto ? html`
             <div class="photo-lightbox" onclick=${e => { if (e.target === e.currentTarget) { archiveLightboxPhoto = null; app.render(); } }}>
               <button class="photo-lightbox-close" onclick=${() => { archiveLightboxPhoto = null; app.render(); }}>×</button>
-              <img src=${archiveLightboxPhoto} class="photo-lightbox-image" alt="Photo fullscreen" />
+              <img src=${archiveLightboxPhoto} class="photo-lightbox-image" alt="Foto Vollbild" />
             </div>
           ` : ''}
         </div>
@@ -4297,17 +4512,22 @@
       return d.toLocaleDateString('de-DE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     }
 
+    // Alle Selektoren unter .xp → identisch nutzbar als eigene Datei UND eingebettet in die App (Druck/Leseansicht)
+    const EXPORT_CSS = '.xp{font-family:Georgia,serif;max-width:700px;margin:0 auto;padding:32px 20px;color:#333;background:#fff}' +
+      '.xp h1{color:#B8862F;border-bottom:2px solid #E8B86D;padding-bottom:8px;font-size:26px}.xp h2{color:#555;margin-top:28px;font-size:16px}' +
+      '.xp h3{color:#555;margin-top:36px;font-size:18px;border-bottom:1px solid #ddd;padding-bottom:4px}' +
+      '.xp .entry{margin:12px 0;padding:12px 16px;background:#fdf6e3;border-radius:8px;border-left:3px solid #E8B86D;page-break-inside:avoid;break-inside:avoid}' +
+      '.xp .label{font-weight:bold;font-size:12px;color:#888;margin:8px 0 2px;text-transform:uppercase;letter-spacing:.03em}' +
+      '.xp .answer{font-size:14px;line-height:1.5;margin:2px 0;white-space:pre-wrap}.xp .meta{color:#888;font-size:13px}';
+
     function buildExportHtml(env) {
+      return '<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mein 6-Minuten-Tagebuch</title><style>' +
+        EXPORT_CSS + '@media print{.xp{padding:0}}</style></head><body class="xp">' + buildExportBody(env) + '</body></html>';
+    }
+
+    function buildExportBody(env) {
       const e = escapeHtml;
-      const css = 'body{font-family:Georgia,serif;max-width:700px;margin:0 auto;padding:32px 20px;color:#333}' +
-        'h1{color:#B8862F;border-bottom:2px solid #E8B86D;padding-bottom:8px}h2{color:#555;margin-top:28px;font-size:16px}' +
-        'h3{color:#555;margin-top:36px;font-size:18px;border-bottom:1px solid #ddd;padding-bottom:4px}' +
-        '.entry{margin:12px 0;padding:12px 16px;background:#fdf6e3;border-radius:8px;border-left:3px solid #E8B86D;page-break-inside:avoid}' +
-        '.label{font-weight:bold;font-size:12px;color:#888;margin:8px 0 2px;text-transform:uppercase;letter-spacing:.03em}' +
-        '.answer{font-size:14px;line-height:1.5;margin:2px 0;white-space:pre-wrap}.meta{color:#888;font-size:13px}' +
-        '@media print{body{padding:0}}';
-      let out = '<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>Mein 6-Minuten-Tagebuch</title><style>' + css + '</style></head><body>';
-      out += '<h1>Mein 6-Minuten-Tagebuch</h1>';
+      let out = '<h1>Mein 6-Minuten-Tagebuch</h1>';
       out += '<p class="meta">Exportiert am ' + e(new Date(env.exportedAt).toLocaleString('de-DE')) + ' · ' +
         tageLabel(env.entries.length) + ' mit Einträgen · App ' + e(env.appVersion) + '</p>';
 
@@ -4363,7 +4583,7 @@
       if (env.photosMeta.length) {
         out += '<p class="meta" style="margin-top:28px">' + env.photosMeta.length + ' Tagesfotos gespeichert (nicht in diesem Export enthalten).</p>';
       }
-      return out + '</body></html>';
+      return out;
     }
 
     function downloadBlob(blob, filename) {
@@ -4377,25 +4597,29 @@
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     }
 
-    // Druck im GLEICHEN Dokument über ein verstecktes iframe (kein window.open → funktioniert in iOS-PWA)
-    function printHtmlInPage(htmlString) {
-      return new Promise((resolve, reject) => {
-        const old = document.getElementById('export-print-frame');
-        if (old) old.remove();
-        const frame = document.createElement('iframe');
-        frame.id = 'export-print-frame';
-        frame.setAttribute('aria-hidden', 'true');
-        frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
-        frame.onload = () => {
-          try {
-            frame.contentWindow.focus();
-            frame.contentWindow.print();
-            resolve(true);
-          } catch (err) { reject(err); }
-        };
-        frame.srcdoc = htmlString;
-        document.body.appendChild(frame);
-      });
+    // Druck im GLEICHEN Dokument ohne iframe/Popup (iOS-PWA-fest): App per @media print ausblenden,
+    // nur #export-print-root drucken. Inhalt ist vollständig escaped (buildExportBody).
+    function ensureExportPrintRoot(bodyHtml) {
+      let root = document.getElementById('export-print-root');
+      if (!root) {
+        root = document.createElement('div');
+        root.id = 'export-print-root';
+        document.body.appendChild(root);
+      }
+      root.innerHTML = '<style>' + EXPORT_CSS + '#export-print-root{display:none}' +
+        '@media print{body.xp-printing>*:not(#export-print-root){display:none!important}' +
+        'body.xp-printing #export-print-root{display:block!important}body.xp-printing{background:#fff!important}.xp{padding:0}}</style>' +
+        '<div class="xp">' + bodyHtml + '</div>';
+      return root;
+    }
+
+    function printExportBody(bodyHtml) {
+      ensureExportPrintRoot(bodyHtml);
+      document.body.classList.add('xp-printing');
+      const cleanup = () => { document.body.classList.remove('xp-printing'); window.removeEventListener('afterprint', cleanup); };
+      window.addEventListener('afterprint', cleanup);
+      setTimeout(cleanup, 60000); // Fallback, falls afterprint (iOS) nie feuert
+      window.print();
     }
 
     async function shareExportFile(ready) {
@@ -4407,11 +4631,9 @@
       return false;
     }
 
-    function closeExportSheet() {
-      if (exportReady?.url) setTimeout(() => URL.revokeObjectURL(exportReady.url), 60000);
-      exportReady = null;
-      app.render();
-    }
+
+    // Vollbild-Leseansicht (iOS-fester Fallback: funktioniert ohne Download/Share/Popup)
+    let exportReader = null; // { bodyHtml, jsonText, kind }
 
     async function runExport(dataService, kind) {
       if (exportBusy) return;
@@ -4425,11 +4647,13 @@
         }
         const stamp = exportDateStamp();
         const count = env.entries.length;
-        let blob, filename, label;
+        const bodyHtml = buildExportBody(env);
+        let blob, filename, label, jsonText = null;
         if (kind === 'json') {
           const { warnings, ...clean } = env;
           if (warnings.length) clean.warnings = warnings;
-          blob = new Blob([JSON.stringify(clean, null, 2)], { type: 'application/json' });
+          jsonText = JSON.stringify(clean, null, 2);
+          blob = new Blob([jsonText], { type: 'application/json' });
           filename = `6min-tagebuch-export-${stamp}.json`;
           label = 'JSON-Export';
         } else {
@@ -4440,8 +4664,8 @@
         const warnSuffix = env.warnings.length ? ' (Hinweis: ' + env.warnings.join(', ') + ')' : '';
 
         if (isMobileExportEnv()) {
-          // Teilen erfordert eine frische Nutzergeste → Sheet mit Buttons anzeigen
-          exportReady = { blob, filename, kind, label, count, url: URL.createObjectURL(blob), warnSuffix };
+          // Teilen/Drucken erfordert eine frische Nutzergeste → Sheet mit Buttons anzeigen
+          exportReady = { blob, filename, kind, label, count, warnSuffix, bodyHtml, jsonText };
           app.render();
           return;
         }
@@ -4450,7 +4674,7 @@
           downloadBlob(blob, filename);
           showToast(`Export erstellt: ${tageLabel(count)}${warnSuffix}`, env.warnings.length ? 'info' : 'success', 5000);
         } else {
-          await printHtmlInPage(await blob.text());
+          printExportBody(bodyHtml);
           showToast(`Druckansicht geöffnet (${tageLabel(count)}) — „Als PDF sichern" wählen${warnSuffix}`, env.warnings.length ? 'info' : 'success', 5000);
         }
       } catch (e) {
@@ -4461,35 +4685,74 @@
       }
     }
 
+    async function copyText(text) {
+      try { await navigator.clipboard.writeText(text); return true; } catch (_) {}
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+        document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, text.length);
+        const ok = document.execCommand('copy'); ta.remove(); return ok;
+      } catch (_) { return false; }
+    }
+
     function ExportSheet() {
+      if (exportReader) return html`<${ExportReader} />`;
       if (!exportReady) return null;
       const r = exportReady;
+      const btn = 'width:100%;min-height:44px;margin-bottom:10px';
       return html`
         <div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:999;display:flex;align-items:flex-end;justify-content:center" onclick=${(ev) => { if (ev.target === ev.currentTarget) closeExportSheet(); }}>
           <div role="dialog" aria-label="Export bereit" style="background:var(--card);color:var(--text);width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom));box-shadow:0 -4px 20px rgba(0,0,0,0.2)">
             <div style="font-size:17px;font-weight:600;margin-bottom:4px">${r.label} bereit</div>
             <div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">${tageLabel(r.count)} · ${r.filename}${r.warnSuffix}</div>
-            <button class="btn btn-primary" style="width:100%;min-height:44px;margin-bottom:10px" onclick=${async () => {
+            <button class="btn btn-primary" style=${btn} onclick=${async () => {
               try {
                 const ok = await shareExportFile(r);
                 if (ok) { showToast('Export geteilt ✓', 'success'); closeExportSheet(); }
-                else showToast('Teilen nicht verfügbar — „Öffnen / Laden" nutzen', 'info', 5000);
+                else showToast('Teilen ist hier nicht verfügbar — „Lesen" oder „Kopieren" nutzen', 'info', 5000);
               } catch (err) {
                 if (err?.name === 'AbortError') showToast('Teilen abgebrochen', 'info');
-                else showToast('Teilen fehlgeschlagen — „Öffnen / Laden" nutzen', 'error', 5000);
+                else showToast('Teilen fehlgeschlagen — „Lesen" oder „Kopieren" nutzen', 'error', 5000);
               }
             }}>📤 Teilen / In Dateien sichern</button>
             ${r.kind === 'html' ? html`
-              <button class="btn btn-secondary" style="width:100%;min-height:44px;margin-bottom:10px" onclick=${async () => {
-                try { await printHtmlInPage(await r.blob.text()); showToast('Druckansicht geöffnet', 'success'); }
-                catch (_) { showToast('Drucken nicht möglich — Datei teilen und dort drucken', 'error', 5000); }
+              <button class="btn btn-secondary" style=${btn} onclick=${() => {
+                try { printExportBody(r.bodyHtml); }
+                catch (_) { showToast('Drucken nicht möglich — „Lesen" nutzen', 'error', 5000); }
               }}>🖨️ Drucken / Als PDF sichern</button>
-            ` : ''}
-            <a href=${r.url} download=${r.filename} target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;min-height:44px;margin-bottom:10px;color:var(--text);text-decoration:underline" onclick=${() => showToast('Datei geöffnet — über Teilen-Symbol sichern', 'info', 5000)}>Öffnen / Laden</a>
+            ` : html`
+              <button class="btn btn-secondary" style=${btn} onclick=${async () => {
+                const ok = await copyText(r.jsonText);
+                showToast(ok ? 'JSON in die Zwischenablage kopiert ✓' : 'Kopieren nicht möglich', ok ? 'success' : 'error');
+              }}>📋 JSON kopieren</button>
+            `}
+            <button class="btn btn-secondary" style=${btn} onclick=${() => { exportReader = { bodyHtml: r.bodyHtml }; app.render(); }}>📖 Alle Einträge lesen</button>
             <button class="btn btn-secondary" style="width:100%;min-height:44px" onclick=${closeExportSheet}>Schließen</button>
           </div>
         </div>
       `;
+    }
+
+    function ExportReader() {
+      const r = exportReader;
+      return html`
+        <div role="dialog" aria-label="Alle Einträge" style="position:fixed;inset:0;z-index:999;background:#fff;display:flex;flex-direction:column">
+          <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;padding:calc(8px + env(safe-area-inset-top)) 12px 8px;border-bottom:1px solid #ddd;background:#fff">
+            <button class="btn btn-secondary" style="min-height:44px;padding:0 14px" onclick=${() => { exportReader = null; app.render(); }}>← Zurück</button>
+            <button class="btn btn-secondary" style="min-height:44px;padding:0 14px" onclick=${() => printExportBody(r.bodyHtml)}>🖨️ Drucken</button>
+          </div>
+          <div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:env(safe-area-inset-bottom)">
+            <style>${EXPORT_CSS}</style>
+            <div class="xp" dangerouslySetInnerHTML=${{ __html: r.bodyHtml }}></div>
+          </div>
+        </div>
+      `;
+    }
+
+    function closeExportSheet() {
+      exportReady = null;
+      exportReader = null;
+      app.render();
     }
 
     // ============================================================================
@@ -5035,6 +5298,7 @@
           window._backfillDate = null;
           this.setState({ screen, journalType: extra, backfillDate });
         } else if (screen === 'archive') {
+          resetArchiveState(); // frische Liste/Monats-Dots nach neuen Einträgen
           const entry = await dataService.getEntries();
           this.setState({ screen, todayEntry: entry });
         } else if (screen === 'reflection') {
@@ -5193,7 +5457,7 @@
               </button>
               <button class=${'tab ' + (screen === 'settings' ? 'active' : '')} onclick=${() => this.handleNavigate('settings')}>
                 <div>⚙️</div>
-                <div class="tab-label">Settings</div>
+                <div class="tab-label">Einstellungen</div>
               </button>
             </div>
 

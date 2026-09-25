@@ -1,7 +1,8 @@
 // sw.js — Service Worker für 6-Minuten-Tagebuch PWA
+// v2.7.0: Archiv-Liste als Default (+Suche), Race/Datum-Fixes, iOS-fester Export (Lesen/Kopieren/Drucken ohne Popup)
 // v2.6.1: Export repariert (Cloud+Demo), Cloud-Stats auf daily_entries, PWA-Pfade relativ zum GitHub-Pages-Subpath
 
-const CACHE_VERSION = 'v2.6.1';
+const CACHE_VERSION = 'v2.7.0';
 // App-eigener Präfix: auf benditot.github.io teilen sich mehrere Apps dieselbe Origin (= denselben Cache-Speicher)
 const CACHE_PREFIX = '6min-';
 const STATIC_CACHE = `${CACHE_PREFIX}static-${CACHE_VERSION}`;

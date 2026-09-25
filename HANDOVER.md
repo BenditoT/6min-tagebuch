@@ -1,31 +1,35 @@
 # HANDOVER — 6-Minuten-Tagebuch (Live-Track Supabase)
 
-**Stand:** 2026-09-24 · Arbeitsordner: `/Volumes/2tb/Codex playground/6min-tagebuch-github` (einzige Deploy-Quelle)
-**Live:** https://benditot.github.io/6min-tagebuch/ (noch v2.6.0 bis Push)
+**Stand:** 2026-09-25 · Arbeitsordner: `/Volumes/2tb/Codex playground/6min-tagebuch-github` (einzige Deploy-Quelle)
+**Live:** https://benditot.github.io/6min-tagebuch/
 **Plan:** `SPRINT-CODEX-6MIN-E1-E6-2026-09-24.md` · Befunde: `EXPERTEN-REVIEW-2026-09-24.md`
 
-## Erledigt: v2.6.1 = E1 + E4 (+ Privacy-Text) — lokal, NICHT committet/gepusht
-- **E1 Export:** `DataService.exportAllData()` = eine Quelle für JSON + Druck (Demo + Cloud: daily_entries, habits, habit_logs, weekly_reflections, challenge_reflections, Foto-Metadaten aus Storage). Envelope `schemaVersion/exportedAt/mode/appVersion`, ohne user_id. Leer → Warnung, Fehler → Fehler-Toast, Erfolg nur nach echter Datei.
-- Druck: alle Felder, `escapeHtml`, verstecktes srcdoc-iframe statt `window.open`.
-- Mobile/iOS: Sheet „Export bereit" mit Teilen (Web Share, frische Geste) / Drucken / Öffnen-Link.
-- **E4:** `calculateStats` Cloud → `daily_entries` (+ `answers.week_rating`). Manifest `start_url ./index.html`, `scope ./`. SW: Assets relativ, Cache-Präfix `6min-`, räumt nur eigene Caches. Notification-Icon relativ.
-- Privacy-Text: keine Verschlüsselungs-/E2EE-Behauptung mehr (TLS + at rest + RLS). Version 2.6.1 (`APP_VERSION`, sw `CACHE_VERSION`).
+## Live: v2.6.1 (gepusht 24.09., Commit 70721f6)
+E1 Export + E4 Stats/PWA-Pfade + Privacy-Text. Live verifiziert (Version, SW, Manifest).
 
-## Tests (Playwright, synthetische Daten, Fake-Supabase) — 24/24 grün
-Desktop-Cloud-Export JSON/Druck, XSS escaped, Datum lokal, Stats-Werte, Fehlerpfad; iPhone-Emulation Sheet; leerer Export; SW-Scope + Precache unter Subpath; Manifest.
+## Bereit zum Push: v2.7.0 = E2 + Export-iOS-Fix — lokal, NICHT committet
+Anlass: Norbert (25.09.): „Export funktioniert noch nicht" + „alte Einträge als Liste lesen".
+- Export live-getestet (Desktop lädt, iPhone-Emulation zeigt Sheet) → vermutete Ursache echtes iPhone: Share/Blob-Link/iframe-Druck in der Homescreen-App.
+  Fix: Sheet mit „📖 Alle Einträge lesen" (In-App-Leseansicht, klappt immer), „📋 JSON kopieren", Drucken über window.print im selben Dokument (App per @media print ausgeblendet, kein iframe/Popup). Blob-Link entfernt.
+- **E2 Archiv:** Default = chronologische Liste (neueste zuerst, Heute/Gestern, 🌅🌙📸, Vorschau), Suche v1 (filtert geladene Einträge, Hinweis mit Trefferzahl), „Ältere Einträge laden" (30er-Seiten), Toggle Liste|Kalender. Tap → bestehende Detailansicht mit „← Zur Liste".
+- Race-Fix: Request-IDs + Loading-Flag modulweit; Monats-Dots mit Guard. Datum: `getEntries` reicht YYYY-MM-DD durch (kein UTC-Versatz), `toLocalDateStr`.
+- Nebenbei: doppeltes Escaping im Archiv-Detail entfernt (& wurde als &amp; angezeigt); Tab „Einstellungen"; Archiv lädt beim Öffnen frisch.
+- Tests (Playwright, synthetisch, Fake-Supabase): 38/38 grün inkl. Liste, Paginierung 40 Tage, Suche, Race (langsamer Request), Zeitzone Honolulu, iOS-Leseansicht.
 
 ## Offen / Risiken
-- **Echtes iPhone ungetestet:** (a) Teilen-Sheet für JSON, (b) „Drucken" per iframe in iOS-PWA — falls iOS die ganze Seite druckt: Fallback „Teilen" → HTML-Datei drucken. Nach Push prüfen.
-- Experten-Review per Subagent abgebrochen (Rate-Limit) → Selbst-Review gemacht; Punkte: Legacy-Cache-Regex `static|runtime-v2.[0-6].x` könnte gleichnamige Caches anderer Apps auf benditot.github.io löschen (nur Neu-Laden, kein Datenverlust); SW cached Supabase-GETs (Tagebuchdaten im Runtime-Cache) → E6/P2 prüfen.
-- iOS-PWA nach Update einmal vom Homescreen löschen + neu hinzufügen (start_url geändert).
+- Echtes iPhone: nach Push testen — Einstellungen → Version muss **2.7.0** zeigen (sonst App schließen/neu öffnen bzw. Update-Banner tippen). Dann: Export → „Alle Einträge lesen", „Drucken", „Teilen"; Archiv-Liste.
+- Ob window.print() in der iOS-Homescreen-App den Druckdialog öffnet, ist ungetestet; „Lesen" + „Teilen" sind die sicheren Wege.
+- `_to_delete/index.lock.stale` im Ordner kann gelöscht werden.
+- SW cached Supabase-GETs (Tagebuchdaten im Runtime-Cache) → E6 prüfen. Legacy-Cache-Regex siehe v2.6.1-Notiz.
 
 ## Nächste Schritte
-1. Push v2.6.1 (Befehl unten), dann auf iPhone: Export JSON + Drucken + Statistiken testen.
-2. Sprint weiter: **E2** (Archiv-Liste default + Race/Datum-Fix) + **E3** (Foto-Galerie) → v2.7.0.
+1. Push v2.7.0 (Befehl unten), iPhone-Test.
+2. **E3 Foto-Galerie** (Grid, Monatsfilter, Lightbox prev/next, Löschen, weg von Base64-localStorage, CSP) → v2.7.1.
+3. E5 Offline-Queue/Migration/Freeze, dann E6.
 
 ```bash
-cd "/Volumes/2tb/Codex playground/6min-tagebuch-github" && git add index.html sw.js manifest.json HANDOVER.md && git commit -m "v2.6.1: Export repariert, Cloud-Stats, PWA-Pfade unter /6min-tagebuch/" && git push origin main
+cd "/Volumes/2tb/Codex playground/6min-tagebuch-github" && git add index.html sw.js HANDOVER.md && git commit -m "v2.7.0: Archiv-Liste als Default + Suche, Race/Datum-Fixes, iOS-fester Export" && git push origin main
 ```
 
 ## Einstiegs-Prompt neue Session
-„Lies HANDOVER.md und SPRINT-CODEX-6MIN-E1-E6-2026-09-24.md im Ordner 6min-tagebuch-github. v2.6.1 ist live. Starte E2+E3 (v2.7.0), nur Supabase-Track."
+„Lies HANDOVER.md und SPRINT-CODEX-6MIN-E1-E6-2026-09-24.md im Ordner 6min-tagebuch-github. v2.7.0 ist live. Starte E3 Foto-Galerie (v2.7.1), nur Supabase-Track."
