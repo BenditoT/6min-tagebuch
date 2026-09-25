@@ -1038,7 +1038,11 @@
     .archive-toggle button { flex:1; min-height:40px; border:none; border-radius:9px; background:transparent; color:var(--text-secondary); font-size:14px; font-weight:600; cursor:pointer; }
     .archive-toggle button.active { background:var(--card); color:var(--text); box-shadow:0 1px 3px var(--shadow); }
     .archive-search input { width:100%; box-sizing:border-box; min-height:44px; padding:10px 14px; border:1px solid var(--border); border-radius:12px; background:var(--card); color:var(--text); font-size:16px; }
-    .archive-hint { font-size:12px; color:var(--text-secondary); }
+    .archive-detail-wrap { display:flex; flex-direction:column; gap:12px; }
+    .archive-pager { display:flex; gap:8px; }
+    .archive-pager .btn { flex:1; min-height:44px; padding:0 8px; }
+    .archive-pager .btn:disabled { opacity:.35; cursor:default; }
+        .archive-hint { font-size:12px; color:var(--text-secondary); }
     .archive-list { display:flex; flex-direction:column; gap:8px; }
     .archive-row { display:block; width:100%; text-align:left; padding:12px 14px; border:1px solid var(--border); border-radius:12px; background:var(--card); color:var(--text); cursor:pointer; font:inherit; min-height:44px; }
     .archive-row:active { background:var(--bg-alt); }
@@ -1760,7 +1764,7 @@
     }
 
     // Demo-Daten: Lade aus localStorage oder verwende Defaults
-    const APP_VERSION = '2.7.0';
+    const APP_VERSION = '2.7.1';
     // Lokales Datum als YYYY-MM-DD (nie toISOString → UTC-Versatz)
     function toLocalDateStr(d) {
       return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -2060,7 +2064,7 @@
         try {
           // 1. Alle Habit-Logs löschen
           const r1 = await this._withRetry(async () =>
-            await this.supabaseClient.from('habit_logs').delete().eq('user_id', this.userId));
+            await this.supabaseClient.from('habit_tracks').delete().eq('user_id', this.userId));
           if (r1.error) throw r1.error;
 
           // 2. Alle Habits löschen
@@ -2379,16 +2383,24 @@
 
         if (!this.supabaseClient || !this.userId) throw new Error('Nicht angemeldet');
         const uid = this.userId;
-        const q = async (label, build) => {
-          const res = await this._withRetry(async () => await build());
-          if (res.error) throw new Error(label + ': ' + (res.error.message || 'Fehler'));
-          return res.data || [];
+        // Nur die Tagebuch-Einträge sind Pflicht. Nebentabellen dürfen fehlen/fehlschlagen →
+        // Warnung im Export statt Totalausfall (Schema-Drift wie habit_logs/habit_tracks darf den Export nie wieder killen)
+        const q = async (label, build, required = false) => {
+          try {
+            const res = await this._withRetry(async () => await build());
+            if (res.error) throw res.error;
+            return res.data || [];
+          } catch (err) {
+            if (required) throw new Error(label + ': ' + (err?.message || 'Fehler'));
+            envelope.warnings.push(label + ' nicht enthalten');
+            return [];
+          }
         };
 
         const [entries, habits, logs, weekly, challenge] = await Promise.all([
-          q('Einträge', () => this.supabaseClient.from('daily_entries').select('entry_date, morning, evening').eq('user_id', uid).order('entry_date', { ascending: true })),
+          q('Einträge', () => this.supabaseClient.from('daily_entries').select('entry_date, morning, evening').eq('user_id', uid).order('entry_date', { ascending: true }), true),
           q('Habits', () => this.supabaseClient.from('habits').select('*').eq('user_id', uid).order('created_at', { ascending: true })),
-          q('Habit-Logs', () => this.supabaseClient.from('habit_logs').select('habit_id, log_date, completed').eq('user_id', uid).order('log_date', { ascending: true })),
+          q('Habit-Logs', () => this.supabaseClient.from('habit_tracks').select('habit_id, log_date, completed').eq('user_id', uid).order('log_date', { ascending: true })),
           q('Wochenreflexionen', () => this.supabaseClient.from('weekly_reflections').select('*').eq('user_id', uid)),
           q('Challenge-Reflexionen', () => this.supabaseClient.from('challenge_reflections').select('*').eq('user_id', uid))
         ]);
@@ -2414,7 +2426,8 @@
             .filter(f => /^\d{4}-\d{2}-\d{2}\.jpg$/.test(f.name))
             .map(f => ({ date: f.name.slice(0, 10), path: 'daily-photos/' + uid + '/' + f.name }));
         } catch (e) {
-          envelope.warnings.push('Foto-Liste konnte nicht geladen werden');
+          // Kein Bucket/keine Rechte → Fotos existieren nur lokal; kein Warn-Toast, nur Hinweis im JSON
+          envelope.photosNote = 'Foto-Speicher in der Cloud nicht verfügbar';
         }
         return envelope;
       }
@@ -2573,14 +2586,14 @@
           const exists = await this.getHabitStatus(habitId, date);
           if (exists) {
             await this._withRetry(async () => await this.supabaseClient
-              .from('habit_logs')
+              .from('habit_tracks')
               .delete()
               .eq('user_id', this.userId)
               .eq('habit_id', habitId)
               .eq('log_date', date));
           } else {
             await this._withRetry(async () => await this.supabaseClient
-              .from('habit_logs')
+              .from('habit_tracks')
               .insert({ user_id: this.userId, habit_id: habitId, log_date: date, completed: true }));
           }
           return !exists;
@@ -2597,7 +2610,7 @@
         if (!this.supabaseClient) return false;
         try {
           const result = await this._withRetry(async () => await this.supabaseClient
-            .from('habit_logs')
+            .from('habit_tracks')
             .select('id')
             .eq('user_id', this.userId)
             .eq('habit_id', habitId)
@@ -2681,7 +2694,7 @@
             const sinceStr = toLocalDateStr(since);
             try {
               const tracksResult = await this._withRetry(async () =>
-                await this.supabaseClient.from('habit_logs').select('habit_id, log_date')
+                await this.supabaseClient.from('habit_tracks').select('habit_id, log_date')
                   .eq('user_id', this.userId)
                   .gte('log_date', sinceStr)
                   .eq('completed', true));
@@ -2756,7 +2769,7 @@
         try {
           // Erst Logs löschen, dann Habit
           await this._withRetry(async () =>
-            await this.supabaseClient.from('habit_logs').delete().eq('habit_id', habitId).eq('user_id', this.userId));
+            await this.supabaseClient.from('habit_tracks').delete().eq('habit_id', habitId).eq('user_id', this.userId));
           const result = await this._withRetry(async () =>
             await this.supabaseClient.from('habits').delete().eq('id', habitId).eq('user_id', this.userId));
           return !result.error;
@@ -3819,6 +3832,7 @@
     let archiveListReqId = 0;
     let archiveList = { items: [], loaded: false, loading: false, hasMore: true, error: null, photoDates: null };
     let archiveSearch = '';
+    let archiveSwipe = null;
 
     function resetArchiveState() {
       archiveSelectedDate = null;
@@ -4070,6 +4084,37 @@
         ` : ''}
       `;
 
+      // ---- Blättern im Detail (Liste): ‹ Neuer | Älter › + Wischen ----
+      const listIdx = archiveSelectedDate ? archiveList.items.findIndex(it => it.date === archiveSelectedDate) : -1;
+      const newerItem = listIdx > 0 ? archiveList.items[listIdx - 1] : null;
+      const olderItem = listIdx >= 0 && listIdx < archiveList.items.length - 1 ? archiveList.items[listIdx + 1] : null;
+      const canLoadOlder = listIdx === archiveList.items.length - 1 && archiveList.hasMore;
+      const goNewer = () => { if (newerItem) handleDayClick(newerItem.date); };
+      const goOlder = async () => {
+        if (olderItem) return handleDayClick(olderItem.date);
+        if (canLoadOlder && !archiveList.loading) {
+          const current = archiveSelectedDate;
+          await loadArchivePage(dataService);
+          const i = archiveList.items.findIndex(it => it.date === current);
+          if (archiveSelectedDate === current && i >= 0 && archiveList.items[i + 1]) handleDayClick(archiveList.items[i + 1].date);
+        }
+      };
+      const onTouchStart = (e) => { const t = e.changedTouches[0]; archiveSwipe = { x: t.clientX, y: t.clientY }; };
+      const onTouchEnd = (e) => {
+        if (!archiveSwipe) return;
+        const t = e.changedTouches[0];
+        const dx = t.clientX - archiveSwipe.x, dy = t.clientY - archiveSwipe.y;
+        archiveSwipe = null;
+        if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) { dx < 0 ? goOlder() : goNewer(); }
+      };
+      const renderPager = (pos) => html`
+        <div class="archive-pager" data-pos=${pos}>
+          <button class="btn btn-secondary" disabled=${!newerItem} aria-label="Neuerer Eintrag" onclick=${goNewer}>‹ Neuer</button>
+          ${pos === 'top' ? html`<button class="btn btn-secondary" onclick=${closeDetail} aria-label="Zur Liste">☰ Liste</button>` : ''}
+          <button class="btn btn-secondary" disabled=${!olderItem && !canLoadOlder} aria-label="Älterer Eintrag" onclick=${goOlder}>Älter ›</button>
+        </div>
+      `;
+
       // ---- Liste ----
       if (archiveMode === 'list' && !archiveList.loaded && !archiveList.loading && !archiveList.error) {
         loadArchivePage(dataService, true);
@@ -4124,8 +4169,11 @@
           </div>
 
           ${archiveMode === 'list' ? (archiveSelectedDate ? html`
-            <button class="btn btn-secondary" style="align-self:flex-start;min-height:44px;padding:0 16px" onclick=${closeDetail}>← Zur Liste</button>
-            ${renderDetail()}
+            <div class="archive-detail-wrap" ontouchstart=${onTouchStart} ontouchend=${onTouchEnd}>
+              ${renderPager('top')}
+              ${renderDetail()}
+              ${!archiveDetailLoading ? renderPager('bottom') : ''}
+            </div>
           ` : renderList()) : html`
             <div class="calendar-header">
               <div class="calendar-month">${monthNames[archiveViewMonth.getMonth()]} ${archiveViewMonth.getFullYear()}</div>
@@ -4833,7 +4881,7 @@
             const habitIds = (habitsResult.data || []).map(h => h.id);
             if (habitIds.length > 0) {
               const logsResult = await dataService._withRetry(async () => await dataService.supabaseClient
-                .from('habit_logs').select('habit_id, completed').eq('user_id', uid));
+                .from('habit_tracks').select('habit_id, completed').eq('user_id', uid));
               const logs = logsResult.data || [];
               let hDone = 0, hTotal = logs.length;
               logs.forEach(l => { if (l.completed) hDone++; });
